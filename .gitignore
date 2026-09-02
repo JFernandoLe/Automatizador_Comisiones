@@ -1,0 +1,8 @@
+CATALOGOS/
+build/
+dist/
+FINALES/
+
+# Archivos de Python
+__pycache__/
+*.pyc
