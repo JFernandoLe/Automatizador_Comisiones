@@ -4,6 +4,11 @@ from etapa2.transformaciones import (
     construir_vida,
     construir_gmm
 )
+from servicios.excel import leer_hojas_seleccionadas, obtener_hojas
+
+
+def _cargar_excel_preparado(ruta):
+    return leer_hojas_seleccionadas(ruta, obtener_hojas(ruta))
 
 
 def generar_vida(
@@ -24,10 +29,7 @@ def generar_vida(
 
     print("\nCargando SAA...")
 
-    saa = pd.read_excel(
-        ruta_saa,
-        engine="openpyxl"
-    )
+    saa = _cargar_excel_preparado(ruta_saa)
 
     print(
         f"Registros SAA: "
@@ -36,10 +38,7 @@ def generar_vida(
 
     print("\nCargando MANUALES...")
 
-    manuales = pd.read_excel(
-        ruta_manuales,
-        engine="openpyxl"
-    )
+    manuales = _cargar_excel_preparado(ruta_manuales)
 
     print(
         f"Registros Manuales: "
@@ -78,10 +77,7 @@ def generar_gmm(
 
     print("\nCargando SAA...")
 
-    saa = pd.read_excel(
-        ruta_saa,
-        engine="openpyxl"
-    )
+    saa = _cargar_excel_preparado(ruta_saa)
 
     print(
         f"Registros SAA: "
@@ -90,10 +86,7 @@ def generar_gmm(
 
     print("\nCargando MANUALES...")
 
-    manuales = pd.read_excel(
-        ruta_manuales,
-        engine="openpyxl"
-    )
+    manuales = _cargar_excel_preparado(ruta_manuales)
 
     print(
         f"Registros Manuales: "

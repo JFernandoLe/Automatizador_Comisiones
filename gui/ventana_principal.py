@@ -1,17 +1,28 @@
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from conversores.preparar import es_entrada_txt
 from gui.componentes import (
     crear_area_desplazable,
     crear_selector_archivo,
+    crear_selector_multiples,
     llenar_checks,
     reemplazar_texto,
 )
 from procesos.bases_sap import generar_bases_sap
 from procesos.comisiones import generar_comisiones
 from procesos.reporte_final import generar_reporte_final
-from servicios.excel import obtener_hojas
+from servicios.excel import listar_excel_en_carpeta, obtener_hojas, obtener_hojas_union
+
+TIPOS_EXCEL = [("Excel", "*.xlsx *.xls")]
+TIPOS_SAA = [
+    ("SAA", "*.txt *.xlsx *.xls"),
+    ("Texto", "*.txt"),
+    ("Excel", "*.xlsx *.xls"),
+]
+CLAVES_MULTIPLES = ("vida", "gmm", "saa", "manuales")
 
 
 class VentanaPrincipal:
@@ -28,9 +39,19 @@ class VentanaPrincipal:
         }
         self.checks_vida = []
         self.checks_gmm = []
+        self.checks_saa = []
+        self.checks_manuales = []
+        self.checks_vlsp = []
+        self.checks_tipo = []
+        self.checks_catalogos = []
 
         self.checks_pc_vida = []
         self.checks_pc_gmm = []
+        self.checks_pc_saa = []
+        self.checks_pc_manuales = []
+        self.checks_pc_vlsp = []
+        self.checks_pc_tipo = []
+        self.checks_pc_catalogos = []
 
         self.modo_proceso_completo = False
 
@@ -63,9 +84,6 @@ class VentanaPrincipal:
         self.tab_reporte = ttk.Frame(self.notebook)
 
         self.notebook.add(self.tab_completo, text="Proceso Completo")
-        self.notebook.add(self.tab_bases, text="Bases SAP")
-        self.notebook.add(self.tab_comisiones, text="Comisiones")
-        self.notebook.add(self.tab_reporte, text="Reporte Final")
 
         self._crear_tab_completo()
         self._crear_tab_bases()
@@ -78,45 +96,71 @@ class VentanaPrincipal:
         ttk.Label(contenido, text="Proceso Completo", style="Header.TLabel").pack(pady=(20, 5))
         ttk.Label(
             contenido,
-            text="Ejecuta Bases SAP, Comisiones y Reporte Final en una sola acción.",
+            text=(
+                "VIDA, GMM y Acumulado aceptan muchos Excel originales o una carpeta "
+                "(como el conversor anterior). SAA acepta un TXT o uno/varios Excel."
+            ),
         ).pack(pady=(0, 15))
 
-        self.entrada_pc_vida = crear_selector_archivo(
-            contenido, "Base VIDA", lambda: self._seleccionar_excel("vida")
+        self.entrada_pc_vida = crear_selector_multiples(
+            contenido,
+            "Base VIDA (varios Excel originales o carpeta)",
+            lambda: self._seleccionar_archivos("vida"),
+            lambda: self._seleccionar_carpeta("vida"),
         )
         self.frame_pc_vida_hojas = ttk.LabelFrame(contenido, text="Hojas VIDA")
         self.frame_pc_vida_hojas.pack(fill="x", padx=20, pady=5)
 
-        self.entrada_pc_gmm = crear_selector_archivo(
-            contenido, "Base GMM", lambda: self._seleccionar_excel("gmm")
+        self.entrada_pc_gmm = crear_selector_multiples(
+            contenido,
+            "Base GMM (varios Excel originales o carpeta)",
+            lambda: self._seleccionar_archivos("gmm"),
+            lambda: self._seleccionar_carpeta("gmm"),
         )
         self.frame_pc_gmm_hojas = ttk.LabelFrame(contenido, text="Hojas GMM")
         self.frame_pc_gmm_hojas.pack(fill="x", padx=20, pady=5)
 
-        self.entrada_pc_saa = crear_selector_archivo(
-            contenido, "Archivo SAA", lambda: self._seleccionar_excel("saa")
+        self.entrada_pc_saa = crear_selector_multiples(
+            contenido,
+            "Archivo SAA (un TXT, o varios Excel)",
+            lambda: self._seleccionar_archivos("saa"),
+            lambda: self._seleccionar_carpeta("saa"),
         )
-        self.entrada_pc_manuales = crear_selector_archivo(
-            contenido, "Acumulado Comisiones", lambda: self._seleccionar_excel("manuales")
+        self.frame_pc_saa_hojas = ttk.LabelFrame(contenido, text="Hojas SAA")
+        self.frame_pc_saa_hojas.pack(fill="x", padx=20, pady=5)
+
+        self.entrada_pc_manuales = crear_selector_multiples(
+            contenido,
+            "Acumulado Comisiones (varios Excel originales o carpeta)",
+            lambda: self._seleccionar_archivos("manuales"),
+            lambda: self._seleccionar_carpeta("manuales"),
         )
+        self.frame_pc_manuales_hojas = ttk.LabelFrame(
+            contenido, text="Hojas Acumulado Comisiones"
+        )
+        self.frame_pc_manuales_hojas.pack(fill="x", padx=20, pady=5)
+
         self.entrada_pc_vlsp = crear_selector_archivo(
-            contenido, "Archivo VLSP", lambda: self._seleccionar_excel("vlsp")
+            contenido, "Archivo VLSP", lambda: self._seleccionar_archivo("vlsp")
         )
-        ttk.Label(contenido, text="Hoja VLSP").pack(pady=(10, 5))
-        self.combo_vlsp_pc = ttk.Combobox(contenido, width=60, state="readonly")
-        self.combo_vlsp_pc.pack()
+        self.frame_pc_vlsp_hojas = ttk.LabelFrame(contenido, text="Hojas VLSP")
+        self.frame_pc_vlsp_hojas.pack(fill="x", padx=20, pady=5)
 
         self.entrada_pc_tipo = crear_selector_archivo(
-            contenido, "Archivo Tipo", lambda: self._seleccionar_excel("tipo")
+            contenido, "Archivo Tipo", lambda: self._seleccionar_archivo("tipo")
         )
-        ttk.Label(contenido, text="Hoja Catálogo Tipo").pack(pady=(10, 5))
-        self.combo_tipo_pc = ttk.Combobox(contenido, width=60, state="readonly")
-        self.combo_tipo_pc.pack()
+        self.frame_pc_tipo_hojas = ttk.LabelFrame(contenido, text="Hojas Catálogo Tipo")
+        self.frame_pc_tipo_hojas.pack(fill="x", padx=20, pady=5)
 
         self.entrada_pc_catalogos = crear_selector_archivo(
-            contenido, "Archivo unico de Catalogos",
-            lambda: self._seleccionar_excel("catalogos"),
+            contenido,
+            "Archivo unico de Catalogos",
+            lambda: self._seleccionar_archivo("catalogos"),
         )
+        self.frame_pc_catalogos_hojas = ttk.LabelFrame(
+            contenido, text="Hojas Catálogos"
+        )
+        self.frame_pc_catalogos_hojas.pack(fill="x", padx=20, pady=5)
 
         self.boton_proceso_completo = ttk.Button(
             contenido,
@@ -128,14 +172,20 @@ class VentanaPrincipal:
 
     def _crear_tab_bases(self):
         ttk.Label(self.tab_bases, text="Bases SAP", style="Header.TLabel").pack(pady=15)
-        self.entrada_vida = crear_selector_archivo(
-            self.tab_bases, "Base VIDA", lambda: self._seleccionar_excel("vida")
+        self.entrada_vida = crear_selector_multiples(
+            self.tab_bases,
+            "Base VIDA (varios Excel originales o carpeta)",
+            lambda: self._seleccionar_archivos("vida"),
+            lambda: self._seleccionar_carpeta("vida"),
         )
         self.frame_vida_hojas = ttk.LabelFrame(self.tab_bases, text="Hojas VIDA")
         self.frame_vida_hojas.pack(fill="x", padx=20, pady=10)
 
-        self.entrada_gmm = crear_selector_archivo(
-            self.tab_bases, "Base GMM", lambda: self._seleccionar_excel("gmm")
+        self.entrada_gmm = crear_selector_multiples(
+            self.tab_bases,
+            "Base GMM (varios Excel originales o carpeta)",
+            lambda: self._seleccionar_archivos("gmm"),
+            lambda: self._seleccionar_carpeta("gmm"),
         )
         self.frame_gmm_hojas = ttk.LabelFrame(self.tab_bases, text="Hojas GMM")
         self.frame_gmm_hojas.pack(fill="x", padx=20, pady=10)
@@ -163,14 +213,26 @@ class VentanaPrincipal:
             frame_checks, text="Generar GMM", variable=self.generar_gmm_var
         ).pack(side="left", padx=20)
 
-        self.entrada_saa = crear_selector_archivo(
-            self.tab_comisiones, "Archivo SAA", lambda: self._seleccionar_excel("saa")
-        )
-        self.entrada_manuales = crear_selector_archivo(
+        self.entrada_saa = crear_selector_multiples(
             self.tab_comisiones,
-            "Acumulado Comisiones",
-            lambda: self._seleccionar_excel("manuales"),
+            "Archivo SAA (un TXT, o varios Excel)",
+            lambda: self._seleccionar_archivos("saa"),
+            lambda: self._seleccionar_carpeta("saa"),
         )
+        self.frame_saa_hojas = ttk.LabelFrame(self.tab_comisiones, text="Hojas SAA")
+        self.frame_saa_hojas.pack(fill="x", padx=20, pady=10)
+
+        self.entrada_manuales = crear_selector_multiples(
+            self.tab_comisiones,
+            "Acumulado Comisiones (varios Excel originales o carpeta)",
+            lambda: self._seleccionar_archivos("manuales"),
+            lambda: self._seleccionar_carpeta("manuales"),
+        )
+        self.frame_manuales_hojas = ttk.LabelFrame(
+            self.tab_comisiones, text="Hojas Acumulado Comisiones"
+        )
+        self.frame_manuales_hojas.pack(fill="x", padx=20, pady=10)
+
         ttk.Button(
             self.tab_comisiones,
             text="Generar Comisiones",
@@ -181,23 +243,28 @@ class VentanaPrincipal:
     def _crear_tab_reporte(self):
         ttk.Label(self.tab_reporte, text="Reporte Final", style="Header.TLabel").pack(pady=15)
         self.entrada_vlsp = crear_selector_archivo(
-            self.tab_reporte, "Archivo VLSP", lambda: self._seleccionar_excel("vlsp")
+            self.tab_reporte, "Archivo VLSP", lambda: self._seleccionar_archivo("vlsp")
         )
-        ttk.Label(self.tab_reporte, text="Hoja VLSP").pack(pady=(10, 5))
-        self.combo_vlsp = ttk.Combobox(self.tab_reporte, width=60, state="readonly")
-        self.combo_vlsp.pack()
+        self.frame_vlsp_hojas = ttk.LabelFrame(self.tab_reporte, text="Hojas VLSP")
+        self.frame_vlsp_hojas.pack(fill="x", padx=20, pady=10)
 
         self.entrada_tipo = crear_selector_archivo(
-            self.tab_reporte, "Archivo Tipo", lambda: self._seleccionar_excel("tipo")
+            self.tab_reporte, "Archivo Tipo", lambda: self._seleccionar_archivo("tipo")
         )
-        ttk.Label(self.tab_reporte, text="Hoja Catálogo Tipo").pack(pady=(10, 5))
-        self.combo_tipo = ttk.Combobox(self.tab_reporte, width=60, state="readonly")
-        self.combo_tipo.pack()
+        self.frame_tipo_hojas = ttk.LabelFrame(
+            self.tab_reporte, text="Hojas Catálogo Tipo"
+        )
+        self.frame_tipo_hojas.pack(fill="x", padx=20, pady=10)
 
         self.entrada_catalogos = crear_selector_archivo(
-            self.tab_reporte, "Archivo unico de Catalogos",
-            lambda: self._seleccionar_excel("catalogos"),
+            self.tab_reporte,
+            "Archivo unico de Catalogos",
+            lambda: self._seleccionar_archivo("catalogos"),
         )
+        self.frame_catalogos_hojas = ttk.LabelFrame(
+            self.tab_reporte, text="Hojas Catálogos"
+        )
+        self.frame_catalogos_hojas.pack(fill="x", padx=20, pady=10)
 
         ttk.Button(
             self.tab_reporte,
@@ -218,12 +285,52 @@ class VentanaPrincipal:
         self.status_label = ttk.Label(footer, text="Listo", font=("Segoe UI", 10, "bold"))
         self.status_label.pack(anchor="w")
 
-    def _seleccionar_excel(self, clave):
-        archivo = filedialog.askopenfilename(filetypes=[("Excel", "*.xlsx *.xls")])
+    def _seleccionar_archivo(self, clave):
+        tipos = TIPOS_SAA if clave == "saa" else TIPOS_EXCEL
+        archivo = filedialog.askopenfilename(filetypes=tipos)
         if not archivo:
             return
+        self._asignar_archivos(clave, [archivo])
 
-        self.archivos[clave] = archivo
+    def _seleccionar_archivos(self, clave):
+        tipos = TIPOS_SAA if clave == "saa" else TIPOS_EXCEL
+        seleccion = filedialog.askopenfilenames(filetypes=tipos)
+        if not seleccion:
+            return
+        self._asignar_archivos(clave, list(seleccion))
+
+    def _seleccionar_carpeta(self, clave):
+        carpeta = filedialog.askdirectory()
+        if not carpeta:
+            return
+        archivos = listar_excel_en_carpeta(carpeta)
+        if not archivos:
+            messagebox.showerror(
+                "Sin archivos",
+                "La carpeta no contiene Excel .xls o .xlsx.",
+            )
+            return
+        self._asignar_archivos(clave, archivos)
+
+    def _asignar_archivos(self, clave, archivos):
+        if clave == "saa":
+            txts = [a for a in archivos if a.lower().endswith(".txt")]
+            excels = [a for a in archivos if not a.lower().endswith(".txt")]
+            if txts and excels:
+                messagebox.showerror(
+                    "SAA",
+                    "No combine TXT con Excel. Use un solo TXT, o uno/varios Excel.",
+                )
+                return
+            if len(txts) > 1:
+                messagebox.showerror(
+                    "SAA",
+                    "SAA en TXT debe ser un solo archivo.",
+                )
+                return
+
+        self.archivos[clave] = archivos if clave in CLAVES_MULTIPLES else archivos[0]
+        texto = self._texto_seleccion(archivos)
         entradas = {
             "vida": [self.entrada_vida, self.entrada_pc_vida],
             "gmm": [self.entrada_gmm, self.entrada_pc_gmm],
@@ -234,52 +341,75 @@ class VentanaPrincipal:
             "catalogos": [self.entrada_catalogos, self.entrada_pc_catalogos],
         }
         for entrada in entradas[clave]:
-            reemplazar_texto(entrada, archivo)
+            reemplazar_texto(entrada, texto)
 
-        if clave in ("vida", "gmm", "vlsp", "tipo"):
-            hojas = obtener_hojas(archivo)
-            self._actualizar_hojas(clave, hojas)
+        if clave == "saa" and es_entrada_txt(archivos):
+            self._actualizar_hojas(clave, [])
+            return
+
+        excels = [a for a in archivos if not a.lower().endswith(".txt")]
+        if len(excels) == 1:
+            hojas = obtener_hojas(excels[0])
+        else:
+            reemplazar_texto(entradas[clave][1], f"Leyendo hojas de {len(excels)} archivos...")
+            self.root.update_idletasks()
+            hojas = obtener_hojas_union(excels)
+            for entrada in entradas[clave]:
+                reemplazar_texto(entrada, texto)
+        self._actualizar_hojas(clave, hojas)
+
+    @staticmethod
+    def _texto_seleccion(archivos):
+        if len(archivos) == 1:
+            return archivos[0]
+        carpeta = Path(archivos[0]).parent
+        return f"{len(archivos)} archivos en {carpeta}"
+
+    def _seleccionar_excel(self, clave):
+        if clave in CLAVES_MULTIPLES:
+            self._seleccionar_archivos(clave)
+        else:
+            self._seleccionar_archivo(clave)
 
     def _actualizar_hojas(self, clave, hojas):
-        if clave == "vida":
-            self.checks_vida = llenar_checks(
-                self.frame_vida_hojas,
-                hojas
-            )
+        pares = {
+            "vida": (self.frame_vida_hojas, self.frame_pc_vida_hojas, "checks_vida", "checks_pc_vida"),
+            "gmm": (self.frame_gmm_hojas, self.frame_pc_gmm_hojas, "checks_gmm", "checks_pc_gmm"),
+            "saa": (self.frame_saa_hojas, self.frame_pc_saa_hojas, "checks_saa", "checks_pc_saa"),
+            "manuales": (
+                self.frame_manuales_hojas,
+                self.frame_pc_manuales_hojas,
+                "checks_manuales",
+                "checks_pc_manuales",
+            ),
+            "vlsp": (self.frame_vlsp_hojas, self.frame_pc_vlsp_hojas, "checks_vlsp", "checks_pc_vlsp"),
+            "tipo": (self.frame_tipo_hojas, self.frame_pc_tipo_hojas, "checks_tipo", "checks_pc_tipo"),
+            "catalogos": (
+                self.frame_catalogos_hojas,
+                self.frame_pc_catalogos_hojas,
+                "checks_catalogos",
+                "checks_pc_catalogos",
+            ),
+        }
 
-            self.checks_pc_vida = llenar_checks(
-                self.frame_pc_vida_hojas,
-                hojas
-            )
+        frame, frame_pc, attr, attr_pc = pares[clave]
 
-        elif clave == "gmm":
-            self.checks_gmm = llenar_checks(
-                self.frame_gmm_hojas,
-                hojas
-            )
+        if not hojas:
+            mensaje = "No aplica selección de hojas para archivo TXT."
+            self._mensaje_hojas(frame, mensaje)
+            self._mensaje_hojas(frame_pc, mensaje)
+            setattr(self, attr, [])
+            setattr(self, attr_pc, [])
+            return
 
-            self.checks_pc_gmm = llenar_checks(
-                self.frame_pc_gmm_hojas,
-                hojas
-            )
+        setattr(self, attr, llenar_checks(frame, hojas))
+        setattr(self, attr_pc, llenar_checks(frame_pc, hojas))
 
-        elif clave == "vlsp":
-            self._llenar_combos(
-                [
-                    self.combo_vlsp,
-                    self.combo_vlsp_pc
-                ],
-                hojas
-            )
-
-        elif clave == "tipo":
-            self._llenar_combos(
-                [
-                    self.combo_tipo,
-                    self.combo_tipo_pc
-                ],
-                hojas
-            )
+    @staticmethod
+    def _mensaje_hojas(frame, texto):
+        for widget in frame.winfo_children():
+            widget.destroy()
+        ttk.Label(frame, text=texto).pack(anchor="w", padx=5, pady=5)
 
     @staticmethod
     def _llenar_combos(combos, valores):
@@ -289,28 +419,24 @@ class VentanaPrincipal:
                 combo.set(valores[0])
 
     def _hojas_seleccionadas(self, clave, proceso_completo=False):
-        if clave == "vida":
-            checks = (
-                self.checks_pc_vida
-                if proceso_completo
-                else self.checks_vida
-            )
+        mapa = {
+            "vida": (self.checks_pc_vida, self.checks_vida),
+            "gmm": (self.checks_pc_gmm, self.checks_gmm),
+            "saa": (self.checks_pc_saa, self.checks_saa),
+            "manuales": (self.checks_pc_manuales, self.checks_manuales),
+            "vlsp": (self.checks_pc_vlsp, self.checks_vlsp),
+            "tipo": (self.checks_pc_tipo, self.checks_tipo),
+            "catalogos": (self.checks_pc_catalogos, self.checks_catalogos),
+        }
+        if clave not in mapa:
+            raise ValueError(f"No existen hojas seleccionables para: {clave}")
 
-        elif clave == "gmm":
-            checks = (
-                self.checks_pc_gmm
-                if proceso_completo
-                else self.checks_gmm
-            )
-
-        else:
-            raise ValueError(
-                f"No existen hojas seleccionables para: {clave}"
-            )
+        checks_pc, checks = mapa[clave]
+        checks_usar = checks_pc if proceso_completo else checks
 
         hojas_seleccionadas = [
             hoja
-            for hoja, variable in checks
+            for hoja, variable in checks_usar
             if variable.get()
         ]
 
@@ -371,14 +497,24 @@ class VentanaPrincipal:
             else:
                 raise
 
-    def _worker_comisiones(self, mostrar_mensaje=True):
+    def _worker_comisiones(self, mostrar_mensaje=True, proceso_completo=False):
         try:
+            hojas_saa = None
+            if self.archivos["saa"] and not es_entrada_txt(self.archivos["saa"]):
+                hojas_saa = self._hojas_seleccionadas(
+                    "saa", proceso_completo=proceso_completo
+                )
+
             generar_comisiones(
                 self.archivos["saa"],
                 self.archivos["manuales"],
                 self.generar_vida_var.get(),
                 self.generar_gmm_var.get(),
                 self.actualizar_estado,
+                hojas_saa=hojas_saa,
+                hojas_manuales=self._hojas_seleccionadas(
+                    "manuales", proceso_completo=proceso_completo
+                ),
             )
             if mostrar_mensaje:
                 self.root.after(0, lambda: messagebox.showinfo("Proceso terminado", "Comisiones generadas correctamente."))
@@ -388,15 +524,18 @@ class VentanaPrincipal:
             else:
                 raise
 
-    def _worker_reporte(self, mostrar_mensaje=True):
+    def _worker_reporte(self, mostrar_mensaje=True, proceso_completo=False):
         try:
             generar_reporte_final(
                 self.archivos["vlsp"],
-                self.combo_vlsp_pc.get() or self.combo_vlsp.get(),
+                self._hojas_seleccionadas("vlsp", proceso_completo=proceso_completo),
                 self.archivos["tipo"],
-                self.combo_tipo_pc.get() or self.combo_tipo.get(),
+                self._hojas_seleccionadas("tipo", proceso_completo=proceso_completo),
                 self.archivos["catalogos"],
                 self.actualizar_estado,
+                hojas_catalogos=self._hojas_seleccionadas(
+                    "catalogos", proceso_completo=proceso_completo
+                ),
             )
             if mostrar_mensaje:
                 self.root.after(0, lambda: messagebox.showinfo("Proceso terminado", "Reporte generado correctamente."))
@@ -416,8 +555,14 @@ class VentanaPrincipal:
                 mostrar_mensaje=False,
                 proceso_completo=True
             )
-            self._worker_comisiones(mostrar_mensaje=False)
-            self._worker_reporte(mostrar_mensaje=False)
+            self._worker_comisiones(
+                mostrar_mensaje=False,
+                proceso_completo=True,
+            )
+            self._worker_reporte(
+                mostrar_mensaje=False,
+                proceso_completo=True,
+            )
             self.root.after(0, lambda: messagebox.showinfo("Proceso terminado", "Proceso completo ejecutado correctamente."))
         except Exception as error:
             self._manejar_error(error)

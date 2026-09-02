@@ -1,0 +1,42 @@
+{
+    "formato_salida": "xlsx",
+
+    "eliminar_filas_vacias": true,
+    "generar_consolidado_final":true,
+
+    "filtros": [
+        {
+            "columna": "Concepto",
+            "operador": "contiene",
+            "valor": "CANCELADO"
+        },
+        {
+            "columna": "Concepto",
+            "operador": "contiene",
+            "valor": "PENDIENTE"
+        }
+    ],
+
+    "reglas": [
+        {
+            "tipo": "multiplicar",
+            "columna": "Comisión",
+            "factor": -1,
+
+            "condicion": {
+                "columna": "Concepto",
+                "valor": "DESPAGO COMISION RENOVACION"
+            }
+        },
+        {
+            "tipo": "multiplicar",
+            "columna": "Comisión",
+            "factor": -1,
+
+            "condicion": {
+                "columna": "Concepto",
+                "valor": "DESPAGO COMISION POLIZA NUEVA"
+            }
+        }
+    ]
+}

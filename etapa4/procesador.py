@@ -1,6 +1,7 @@
 import pandas as pd
 
 from etapa4.transformaciones import construir_vida_etapa4, construir_gmm_etapa4
+from servicios.excel import leer_hojas_seleccionadas
 
 HOJAS_CATALOGOS = {
     "PFPM": ["AGENTE_ORIGINAL", "AGENTE_REPORTERIA"],
@@ -24,7 +25,7 @@ def _validar_columnas(df, hoja, requeridas):
         )
 
 
-def cargar_catalogos(ruta_catalogos):
+def cargar_catalogos(ruta_catalogos, hojas_seleccionadas=None):
     if not ruta_catalogos:
         raise ValueError("Debe seleccionar el archivo único de catálogos.")
 
@@ -36,6 +37,15 @@ def cargar_catalogos(ruta_catalogos):
             "El archivo de catálogos no contiene las hojas obligatorias: "
             + ", ".join(faltantes)
         )
+
+    if hojas_seleccionadas is not None:
+        seleccion = {str(hoja).strip().upper() for hoja in hojas_seleccionadas}
+        faltantes_sel = [hoja for hoja in HOJAS_CATALOGOS if hoja not in seleccion]
+        if faltantes_sel:
+            raise ValueError(
+                "Debe seleccionar las hojas obligatorias de catálogos: "
+                + ", ".join(faltantes_sel)
+            )
 
     dataframes = {}
     for hoja, columnas in HOJAS_CATALOGOS.items():
@@ -51,17 +61,29 @@ def cargar_catalogos(ruta_catalogos):
     return dataframes["PFPM"], dataframes["CONCEPTOS_VIDA"], dataframes["CONCEPTOS_GMM"]
 
 
-def generar_vida_etapa4(ruta_vlsp, hoja_vlsp, ruta_tipo, hoja_tipo, ruta_catalogos):
+def generar_vida_etapa4(
+    ruta_vlsp,
+    hojas_vlsp,
+    ruta_tipo,
+    hojas_tipo,
+    ruta_catalogos,
+    hojas_catalogos=None,
+):
     print("\n" + "=" * 80)
     print("ETAPA 4 VIDA")
     print("=" * 80)
 
+    if isinstance(hojas_vlsp, str):
+        hojas_vlsp = [hojas_vlsp]
+    if isinstance(hojas_tipo, str):
+        hojas_tipo = [hojas_tipo]
+
     df_vida = pd.read_parquet("vida_comisiones.parquet")
-    df_vlsp = pd.read_excel(ruta_vlsp, sheet_name=hoja_vlsp, engine="openpyxl")
-    df_tipo = pd.read_excel(
-        ruta_tipo, sheet_name=hoja_tipo, header=2, engine="openpyxl"
+    df_vlsp = leer_hojas_seleccionadas(ruta_vlsp, hojas_vlsp)
+    df_tipo = leer_hojas_seleccionadas(ruta_tipo, hojas_tipo, header=2)
+    df_pfpm, df_conceptos_vida, _ = cargar_catalogos(
+        ruta_catalogos, hojas_seleccionadas=hojas_catalogos
     )
-    df_pfpm, df_conceptos_vida, _ = cargar_catalogos(ruta_catalogos)
 
     resultado = construir_vida_etapa4(
         df_vida, df_vlsp, df_tipo, df_pfpm, df_conceptos_vida
@@ -70,13 +92,15 @@ def generar_vida_etapa4(ruta_vlsp, hoja_vlsp, ruta_tipo, hoja_tipo, ruta_catalog
     return resultado
 
 
-def generar_gmm_etapa4(ruta_catalogos):
+def generar_gmm_etapa4(ruta_catalogos, hojas_catalogos=None):
     print("\n" + "=" * 80)
     print("ETAPA 4 GMM")
     print("=" * 80)
 
     df_gmm = pd.read_parquet("gmm_comisiones.parquet")
-    df_pfpm, _, df_conceptos_gmm = cargar_catalogos(ruta_catalogos)
+    df_pfpm, _, df_conceptos_gmm = cargar_catalogos(
+        ruta_catalogos, hojas_seleccionadas=hojas_catalogos
+    )
 
     resultado = construir_gmm_etapa4(df_gmm, df_pfpm, df_conceptos_gmm)
     print(f"Resultado GMM: {len(resultado):,}")

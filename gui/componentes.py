@@ -37,6 +37,17 @@ def crear_selector_archivo(parent, titulo, comando, ancho=80):
     return entrada
 
 
+def crear_selector_multiples(parent, titulo, comando_archivos, comando_carpeta, ancho=80):
+    ttk.Label(parent, text=titulo).pack(pady=(10, 5))
+    frame = ttk.Frame(parent)
+    frame.pack(fill="x", padx=20)
+    entrada = ttk.Entry(frame, width=ancho)
+    entrada.pack(side="left", expand=True, fill="x")
+    ttk.Button(frame, text="Archivos", command=comando_archivos).pack(side="left", padx=5)
+    ttk.Button(frame, text="Carpeta", command=comando_carpeta).pack(side="left", padx=5)
+    return entrada
+
+
 def reemplazar_texto(entrada, texto):
     entrada.delete(0, tk.END)
     entrada.insert(0, texto)
