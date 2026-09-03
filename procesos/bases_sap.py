@@ -1,7 +1,6 @@
 from conversores.preparar import leer_como_automatizador_original, preparar_excel_sap
 from etapa1.procesador import procesar_dataframe
 from servicios.estado import en_rango
-from servicios.excel import guardar_excel_dividido
 
 
 def generar_bases_sap(vida_file, gmm_file, hojas_vida, hojas_gmm, actualizar_estado):
@@ -38,11 +37,9 @@ def generar_bases_sap(vida_file, gmm_file, hojas_vida, hojas_gmm, actualizar_est
     actualizar_estado("Procesando Base GMM...", 82)
     df_gmm = procesar_dataframe(df_gmm, "GMM")
 
-    actualizar_estado("Generando archivos de salida...", 92)
+    actualizar_estado("Guardando resultados intermedios...", 92)
     df_vida.to_parquet("vida_para_reporte.parquet", index=False)
     df_gmm.to_parquet("gmm_para_reporte.parquet", index=False)
-    guardar_excel_dividido(df_vida, "vida_para_reporte.xlsx")
-    guardar_excel_dividido(df_gmm, "gmm_para_reporte.xlsx")
 
     actualizar_estado("Bases SAP generadas", 100)
     return df_vida, df_gmm

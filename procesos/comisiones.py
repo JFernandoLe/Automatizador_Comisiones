@@ -1,7 +1,6 @@
 from conversores.preparar import preparar_manuales, preparar_saa
 from etapa2.procesador import generar_vida, generar_gmm
 from servicios.estado import en_rango
-from servicios.excel import guardar_excel_dividido
 
 
 def generar_comisiones(
@@ -34,17 +33,15 @@ def generar_comisiones(
     if ejecutar_vida:
         actualizar_estado("Procesando comisiones VIDA...", 52)
         df_vida = generar_vida(saa_listo, manuales_listo)
-        actualizar_estado("Generando archivos de salida...", 64)
+        actualizar_estado("Guardando resultados intermedios...", 64)
         df_vida.to_parquet("vida_comisiones.parquet", index=False)
-        guardar_excel_dividido(df_vida, "vida_comisiones.xlsx")
         resultados["vida"] = df_vida
 
     if ejecutar_gmm:
         actualizar_estado("Procesando comisiones GMM...", 74)
         df_gmm = generar_gmm(saa_listo, manuales_listo)
-        actualizar_estado("Generando archivos de salida...", 88)
+        actualizar_estado("Guardando resultados intermedios...", 88)
         df_gmm.to_parquet("gmm_comisiones.parquet", index=False)
-        guardar_excel_dividido(df_gmm, "gmm_comisiones.xlsx")
         resultados["gmm"] = df_gmm
 
     actualizar_estado("Comisiones generadas", 100)
