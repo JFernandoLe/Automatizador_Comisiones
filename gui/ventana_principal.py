@@ -3,8 +3,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from conversores.excel_original import parece_ya_convertido
-from conversores.preparar import es_consolidado_listo, es_entrada_txt
+from conversores.preparar import es_entrada_txt
 from gui.componentes import (
     crear_area_desplazable,
     crear_selector_archivo,
@@ -98,8 +97,8 @@ class VentanaPrincipal:
         ttk.Label(
             contenido,
             text=(
-                "VIDA, GMM y Acumulado: carpeta o muchos originales (ConvExc, todas las hojas). "
-                "Si elige un consolidado ya convertido, no se reconvierte. "
+                "Un Excel: marque la hoja que tiene los datos (como antes). "
+                "Carpeta o muchos archivos: se consolidan todas las hojas de cada uno. "
                 "SAA: un TXT o Excel."
             ),
         ).pack(pady=(0, 15))
@@ -350,15 +349,13 @@ class VentanaPrincipal:
             return
 
         excels = [a for a in archivos if not a.lower().endswith(".txt")]
-        if clave in ("vida", "gmm", "manuales") and not (
-            len(excels) == 1 and parece_ya_convertido(excels[0])
-        ):
+        if len(excels) > 1 and clave in ("vida", "gmm", "manuales"):
             self._actualizar_hojas(
                 clave,
                 [],
                 mensaje=(
-                    "Originales: se procesarán todas las hojas de cada archivo, "
-                    "como ConvExc. La selección de hojas aplica solo a un consolidado."
+                    "Varios archivos: se consolidan todas las hojas de cada Excel, "
+                    "como el conversor original."
                 ),
             )
             return
@@ -459,9 +456,9 @@ class VentanaPrincipal:
         ]
 
         if not hojas_seleccionadas:
-            if clave in ("vida", "gmm", "manuales") and not es_consolidado_listo(
-                self.archivos.get(clave)
-            ):
+            archivos = self.archivos.get(clave)
+            varios = isinstance(archivos, (list, tuple)) and len(archivos) > 1
+            if varios and clave in ("vida", "gmm", "manuales"):
                 return []
             raise ValueError(
                 f"Debe seleccionar al menos una hoja de {clave.upper()}."

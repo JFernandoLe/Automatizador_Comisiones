@@ -5,7 +5,7 @@ import pandas as pd
 from conversores.excel_original import (
     convertir_excel_original,
     convertir_exceles_originales,
-    parece_ya_convertido,
+    hojas_listas_para_pandas,
 )
 from conversores.saa_txt import convertir_txt_saa
 from servicios.excel import (
@@ -32,11 +32,6 @@ def es_entrada_txt(archivos):
     return len(lista) == 1 and es_txt(lista[0])
 
 
-def es_consolidado_listo(archivos):
-    lista = como_lista(archivos)
-    return len(lista) == 1 and parece_ya_convertido(lista[0])
-
-
 def preparar_excel_sap(
     archivos,
     hojas_seleccionadas=None,
@@ -44,20 +39,30 @@ def preparar_excel_sap(
     actualizar_estado=None,
 ):
     """
-    Originales → ConvExc (todas las hojas) → consolidado.
-    Consolidado ya convertido → se deja igual para que el automatizador
-    lo lea con pandas, sin +2 ni filtros otra vez.
+    Un archivo + hojas marcadas:
+      - si esas hojas ya tienen Fecha/Agente en fila 0 → no reconvertir
+      - si no → ConvExc solo de esas hojas
+    Varios archivos/carpeta:
+      - ConvExc de todas las hojas de cada archivo (como el conversor)
     """
     lista = como_lista(archivos)
     if not lista:
         raise ValueError("Debe seleccionar al menos un archivo Excel.")
 
-    if es_consolidado_listo(lista):
-        print(f"Archivo ya convertido, sin reconvertir: {Path(lista[0]).name}")
-        return lista[0]
-
     if len(lista) == 1:
-        return convertir_excel_original(lista[0], prefijo=prefijo)
+        if not hojas_seleccionadas:
+            raise ValueError("Debe seleccionar al menos una hoja.")
+        if hojas_listas_para_pandas(lista[0], hojas_seleccionadas):
+            print(
+                "Hojas ya convertidas, lectura pandas sin ConvExc: "
+                + ", ".join(hojas_seleccionadas)
+            )
+            return lista[0]
+        return convertir_excel_original(
+            lista[0],
+            prefijo=prefijo,
+            hojas_seleccionadas=hojas_seleccionadas,
+        )
 
     return convertir_exceles_originales(
         lista,
@@ -68,13 +73,15 @@ def preparar_excel_sap(
 
 def leer_como_automatizador_original(archivos, ruta_preparada, hojas_seleccionadas):
     """
-    Si el usuario trajo un consolidado, lee las hojas que marque.
-    Si se acaba de consolidar, lee la primera hoja (pd.read_excel),
-    como el automatizador leía Consolidado.xlsx.
+    Un consolidado: solo las hojas que el usuario marcó (como el app original).
+    Un original recién convertido o un lote: primera hoja del temp.
     """
     lista = como_lista(archivos)
-    if es_consolidado_listo(lista) and str(Path(ruta_preparada).resolve()) == str(
-        Path(lista[0]).resolve()
+    if (
+        len(lista) == 1
+        and hojas_seleccionadas
+        and hojas_listas_para_pandas(lista[0], hojas_seleccionadas)
+        and str(Path(ruta_preparada).resolve()) == str(Path(lista[0]).resolve())
     ):
         return leer_hojas_seleccionadas(ruta_preparada, hojas_seleccionadas)
     return pd.read_excel(ruta_preparada, engine="openpyxl")
@@ -122,7 +129,11 @@ def preparar_manuales(
     actualizar_estado=None,
 ):
     lista = como_lista(archivos)
-    if es_consolidado_listo(lista) and hojas_seleccionadas:
+    if (
+        len(lista) == 1
+        and hojas_seleccionadas
+        and hojas_listas_para_pandas(lista[0], hojas_seleccionadas)
+    ):
         df = leer_hojas_seleccionadas(lista[0], hojas_seleccionadas)
         return guardar_dataframe_temporal(df, prefijo="manuales_")
 

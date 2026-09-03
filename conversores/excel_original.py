@@ -31,23 +31,39 @@ def encontrar_encabezado(rows):
     raise Exception("No se encontró la fila de encabezado")
 
 
+def _primera_fila(archivo, hoja=None):
+    wb = CalamineWorkbook.from_path(str(archivo))
+    hojas = list(wb.sheet_names)
+    if not hojas:
+        return []
+    nombre = hoja if hoja in hojas else hojas[0]
+    rows = wb.get_sheet_by_name(nombre).to_python()
+    if not rows:
+        return []
+    return [str(x).strip() for x in rows[0]]
+
+
+def hoja_con_encabezado_en_fila_0(archivo, hoja):
+    row0 = _primera_fila(archivo, hoja)
+    return "Fecha" in row0 and "Agente" in row0
+
+
 def parece_ya_convertido(archivo):
-    """
-    El automatizador original leía consolidados con encabezado en la fila 0.
-    Si Fecha y Agente ya están ahí, no hay que volver a correr ConvExc.
-    """
+    """True si alguna hoja ya trae Fecha/Agente en la fila 0."""
     try:
         wb = CalamineWorkbook.from_path(str(archivo))
-        hojas = list(wb.sheet_names)
-        if not hojas:
-            return False
-        rows = wb.get_sheet_by_name(hojas[0]).to_python()
-        if not rows:
-            return False
-        row0 = [str(x).strip() for x in rows[0]]
-        return "Fecha" in row0 and "Agente" in row0
+        for hoja in wb.sheet_names:
+            if hoja_con_encabezado_en_fila_0(archivo, hoja):
+                return True
+        return False
     except Exception:
         return False
+
+
+def hojas_listas_para_pandas(archivo, hojas):
+    return bool(hojas) and all(
+        hoja_con_encabezado_en_fila_0(archivo, hoja) for hoja in hojas
+    )
 
 
 def _crear_xlsx(ruta, encabezado):
@@ -63,19 +79,40 @@ def _ruta_temporal(prefijo):
     return ruta
 
 
-def convertir_excel_original(archivo, prefijo="convertido_"):
+def convertir_excel_original(
+    archivo, prefijo="convertido_", hojas_seleccionadas=None
+):
     """
-    Misma lógica que ConvExc.convertir_a_xlsx: todas las hojas del libro.
+    ConvExc sobre las hojas indicadas (o todas, en lote de carpeta).
+    El encabezado se busca en las hojas a procesar, no forzado en la hoja 1.
     """
     config = cargar_configuracion()
     archivo = Path(archivo)
     wb_calamine = CalamineWorkbook.from_path(str(archivo))
-    hojas = list(wb_calamine.sheet_names)
+    hojas_libro = list(wb_calamine.sheet_names)
+    if hojas_seleccionadas:
+        hojas = [h for h in hojas_libro if h in set(hojas_seleccionadas)]
+        if not hojas:
+            raise ValueError("Ninguna de las hojas seleccionadas existe en el archivo.")
+    else:
+        hojas = hojas_libro
 
-    sheet = wb_calamine.get_sheet_by_name(hojas[0])
-    rows = sheet.to_python()
-    fila_encabezado = encontrar_encabezado(rows)
-    encabezado = rows[fila_encabezado]
+    fila_encabezado = None
+    hoja_encabezado = None
+    encabezado = None
+    for nombre_hoja in hojas:
+        rows = wb_calamine.get_sheet_by_name(nombre_hoja).to_python()
+        try:
+            fila_encabezado = encontrar_encabezado(rows)
+            hoja_encabezado = nombre_hoja
+            encabezado = rows[fila_encabezado]
+            break
+        except Exception:
+            continue
+
+    if encabezado is None:
+        raise Exception("No se encontró la fila de encabezado")
+
     mapa_columnas = {
         str(nombre).strip(): indice
         for indice, nombre in enumerate(encabezado)
@@ -96,11 +133,11 @@ def convertir_excel_original(archivo, prefijo="convertido_"):
 
     wb_out, ws_out, ruta_actual = _crear_xlsx(ruta_salida, encabezado)
 
-    for indice_hoja, nombre_hoja in enumerate(hojas):
+    for nombre_hoja in hojas:
         sheet = wb_calamine.get_sheet_by_name(nombre_hoja)
         rows = sheet.to_python()
 
-        if indice_hoja == 0:
+        if nombre_hoja == hoja_encabezado:
             inicio = fila_encabezado + 2
         else:
             inicio = 0
