@@ -3,7 +3,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from conversores.preparar import es_entrada_txt
+from conversores.excel_original import parece_ya_convertido
+from conversores.preparar import es_consolidado_listo, es_entrada_txt
 from gui.componentes import (
     crear_area_desplazable,
     crear_selector_archivo,
@@ -97,8 +98,9 @@ class VentanaPrincipal:
         ttk.Label(
             contenido,
             text=(
-                "VIDA, GMM y Acumulado aceptan muchos Excel originales o una carpeta "
-                "(como el conversor anterior). SAA acepta un TXT o uno/varios Excel."
+                "VIDA, GMM y Acumulado: carpeta o muchos originales (ConvExc, todas las hojas). "
+                "Si elige un consolidado ya convertido, no se reconvierte. "
+                "SAA: un TXT o Excel."
             ),
         ).pack(pady=(0, 15))
 
@@ -344,14 +346,30 @@ class VentanaPrincipal:
             reemplazar_texto(entrada, texto)
 
         if clave == "saa" and es_entrada_txt(archivos):
-            self._actualizar_hojas(clave, [])
+            self._actualizar_hojas(clave, [], mensaje="No aplica selección de hojas para archivo TXT.")
             return
 
         excels = [a for a in archivos if not a.lower().endswith(".txt")]
+        if clave in ("vida", "gmm", "manuales") and not (
+            len(excels) == 1 and parece_ya_convertido(excels[0])
+        ):
+            self._actualizar_hojas(
+                clave,
+                [],
+                mensaje=(
+                    "Originales: se procesarán todas las hojas de cada archivo, "
+                    "como ConvExc. La selección de hojas aplica solo a un consolidado."
+                ),
+            )
+            return
+
         if len(excels) == 1:
             hojas = obtener_hojas(excels[0])
         else:
-            reemplazar_texto(entradas[clave][1], f"Leyendo hojas de {len(excels)} archivos...")
+            reemplazar_texto(
+                entradas[clave][1],
+                f"Leyendo hojas de {len(excels)} archivos...",
+            )
             self.root.update_idletasks()
             hojas = obtener_hojas_union(excels)
             for entrada in entradas[clave]:
@@ -371,7 +389,7 @@ class VentanaPrincipal:
         else:
             self._seleccionar_archivo(clave)
 
-    def _actualizar_hojas(self, clave, hojas):
+    def _actualizar_hojas(self, clave, hojas, mensaje=None):
         pares = {
             "vida": (self.frame_vida_hojas, self.frame_pc_vida_hojas, "checks_vida", "checks_pc_vida"),
             "gmm": (self.frame_gmm_hojas, self.frame_pc_gmm_hojas, "checks_gmm", "checks_pc_gmm"),
@@ -395,9 +413,9 @@ class VentanaPrincipal:
         frame, frame_pc, attr, attr_pc = pares[clave]
 
         if not hojas:
-            mensaje = "No aplica selección de hojas para archivo TXT."
-            self._mensaje_hojas(frame, mensaje)
-            self._mensaje_hojas(frame_pc, mensaje)
+            texto = mensaje or "No aplica selección de hojas para archivo TXT."
+            self._mensaje_hojas(frame, texto)
+            self._mensaje_hojas(frame_pc, texto)
             setattr(self, attr, [])
             setattr(self, attr_pc, [])
             return
@@ -441,6 +459,10 @@ class VentanaPrincipal:
         ]
 
         if not hojas_seleccionadas:
+            if clave in ("vida", "gmm", "manuales") and not es_consolidado_listo(
+                self.archivos.get(clave)
+            ):
+                return []
             raise ValueError(
                 f"Debe seleccionar al menos una hoja de {clave.upper()}."
             )

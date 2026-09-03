@@ -1,10 +1,6 @@
-from conversores.preparar import preparar_excel_sap
+from conversores.preparar import leer_como_automatizador_original, preparar_excel_sap
 from etapa1.procesador import procesar_dataframe
-from servicios.excel import (
-    guardar_excel_dividido,
-    leer_hojas_seleccionadas,
-    obtener_hojas,
-)
+from servicios.excel import guardar_excel_dividido
 
 
 def generar_bases_sap(vida_file, gmm_file, hojas_vida, hojas_gmm, actualizar_estado):
@@ -13,27 +9,31 @@ def generar_bases_sap(vida_file, gmm_file, hojas_vida, hojas_gmm, actualizar_est
     if not gmm_file:
         raise ValueError("Debe seleccionar uno o más archivos GMM.")
 
-    actualizar_estado("Convirtiendo y consolidando VIDA...", 5)
+    actualizar_estado("Preparando VIDA...", 5)
     vida_convertido = preparar_excel_sap(
         vida_file,
-        hojas_vida,
+        hojas_seleccionadas=hojas_vida,
         prefijo="vida_",
         actualizar_estado=actualizar_estado,
     )
     actualizar_estado("Leyendo VIDA...", 10)
-    df_vida = leer_hojas_seleccionadas(vida_convertido, obtener_hojas(vida_convertido))
+    df_vida = leer_como_automatizador_original(
+        vida_file, vida_convertido, hojas_vida
+    )
     actualizar_estado("Procesando VIDA...", 25)
     df_vida = procesar_dataframe(df_vida, "VIDA")
 
-    actualizar_estado("Convirtiendo y consolidando GMM...", 50)
+    actualizar_estado("Preparando GMM...", 50)
     gmm_convertido = preparar_excel_sap(
         gmm_file,
-        hojas_gmm,
+        hojas_seleccionadas=hojas_gmm,
         prefijo="gmm_",
         actualizar_estado=actualizar_estado,
     )
     actualizar_estado("Leyendo GMM...", 55)
-    df_gmm = leer_hojas_seleccionadas(gmm_convertido, obtener_hojas(gmm_convertido))
+    df_gmm = leer_como_automatizador_original(
+        gmm_file, gmm_convertido, hojas_gmm
+    )
     actualizar_estado("Procesando GMM...", 70)
     df_gmm = procesar_dataframe(df_gmm, "GMM")
 

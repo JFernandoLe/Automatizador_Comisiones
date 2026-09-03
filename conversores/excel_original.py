@@ -1,9 +1,8 @@
 """
-Adaptación de ConvExc para un solo archivo y hojas seleccionadas.
+Adaptación de ConvExc: todas las hojas de cada original, luego consolidado.
 
-Conserva: búsqueda de encabezado Fecha/Agente, salto de la fila posterior
-al encabezado en la primera hoja del libro, filtros, reglas DESPAGO y
-partición por límite de Excel.
+No filtra por selección de hojas. Esa selección es del automatizador,
+sobre el consolidado ya convertido.
 """
 import os
 import tempfile
@@ -32,6 +31,25 @@ def encontrar_encabezado(rows):
     raise Exception("No se encontró la fila de encabezado")
 
 
+def parece_ya_convertido(archivo):
+    """
+    El automatizador original leía consolidados con encabezado en la fila 0.
+    Si Fecha y Agente ya están ahí, no hay que volver a correr ConvExc.
+    """
+    try:
+        wb = CalamineWorkbook.from_path(str(archivo))
+        hojas = list(wb.sheet_names)
+        if not hojas:
+            return False
+        rows = wb.get_sheet_by_name(hojas[0]).to_python()
+        if not rows:
+            return False
+        row0 = [str(x).strip() for x in rows[0]]
+        return "Fecha" in row0 and "Agente" in row0
+    except Exception:
+        return False
+
+
 def _crear_xlsx(ruta, encabezado):
     wb = Workbook(write_only=True)
     ws = wb.create_sheet("Datos")
@@ -45,25 +63,14 @@ def _ruta_temporal(prefijo):
     return ruta
 
 
-def convertir_excel_original(archivo, hojas_seleccionadas, prefijo="convertido_"):
+def convertir_excel_original(archivo, prefijo="convertido_"):
     """
-    Convierte un Excel original (.xls / .xlsx) con la lógica de ConvExc
-    y deja un .xlsx listo para la lógica existente del automatizador.
-
-    Solo procesa las hojas indicadas, en el orden del libro.
+    Misma lógica que ConvExc.convertir_a_xlsx: todas las hojas del libro.
     """
-    if not hojas_seleccionadas:
-        raise ValueError("Debe seleccionar al menos una hoja.")
-
     config = cargar_configuracion()
     archivo = Path(archivo)
     wb_calamine = CalamineWorkbook.from_path(str(archivo))
     hojas = list(wb_calamine.sheet_names)
-    hojas_objetivo = [h for h in hojas if h in set(hojas_seleccionadas)]
-
-    if not hojas_objetivo:
-        print(f"Sin hojas seleccionadas en: {archivo.name}")
-        return None
 
     sheet = wb_calamine.get_sheet_by_name(hojas[0])
     rows = sheet.to_python()
@@ -89,8 +96,7 @@ def convertir_excel_original(archivo, hojas_seleccionadas, prefijo="convertido_"
 
     wb_out, ws_out, ruta_actual = _crear_xlsx(ruta_salida, encabezado)
 
-    for nombre_hoja in hojas_objetivo:
-        indice_hoja = hojas.index(nombre_hoja)
+    for indice_hoja, nombre_hoja in enumerate(hojas):
         sheet = wb_calamine.get_sheet_by_name(nombre_hoja)
         rows = sheet.to_python()
 
@@ -135,22 +141,20 @@ def convertir_excel_original(archivo, hojas_seleccionadas, prefijo="convertido_"
     if len(rutas) == 1:
         return rutas[0]
 
-    return _consolidar_partes(rutas, encabezado, prefijo)
+    return _consolidar_partes(rutas, prefijo)
 
 
 def convertir_exceles_originales(
     archivos,
-    hojas_seleccionadas,
     prefijo="convertido_",
     actualizar_estado=None,
 ):
     """
-    Convierte y consolida varios Excel originales, como ConvExc + Consolidado.xlsx.
+    Convierte cada original (todas las hojas) y arma Consolidado.xlsx
+    como ConvExc.generar_consolidado: solo la hoja activa de cada parte.
     """
     if not archivos:
         raise ValueError("Debe seleccionar al menos un archivo Excel.")
-    if not hojas_seleccionadas:
-        raise ValueError("Debe seleccionar al menos una hoja.")
 
     convertidos = []
     omitidos = []
@@ -167,13 +171,9 @@ def convertir_exceles_originales(
         try:
             ruta = convertir_excel_original(
                 archivo,
-                hojas_seleccionadas,
                 prefijo=f"{prefijo}{indice}_",
             )
-            if ruta:
-                convertidos.append(ruta)
-            else:
-                omitidos.append(nombre)
+            convertidos.append(ruta)
         except Exception as error:
             print(f"ERROR en {nombre}: {error}")
             omitidos.append(f"{nombre} ({error})")
@@ -204,38 +204,27 @@ def convertir_exceles_originales(
 
 
 def _consolidar_convertidos(rutas, prefijo):
-    """Une varios xlsx convertidos en un solo libro, como generar_consolidado de ConvExc."""
+    """Igual que ConvExc.generar_consolidado: wb.active de cada convertido."""
     from openpyxl import load_workbook
 
     ruta_final = _ruta_temporal(f"{prefijo}cons_")
     wb_final = Workbook(write_only=True)
     ws = wb_final.create_sheet("Datos_1")
-    encabezado = None
-    filas_en_hoja = 0
-    numero_hoja = 1
+    encabezado_escrito = False
 
     for ruta in rutas:
         wb = load_workbook(ruta, read_only=True, data_only=True)
-        for hoja in wb.worksheets:
-            primera_fila = True
-            for fila in hoja.iter_rows(values_only=True):
-                valores = list(fila)
-                if primera_fila:
-                    primera_fila = False
-                    if encabezado is None:
-                        encabezado = valores
-                        ws.append(encabezado)
-                        filas_en_hoja = 1
-                    continue
-
-                if filas_en_hoja >= MAX_DATOS_XLSX:
-                    numero_hoja += 1
-                    ws = wb_final.create_sheet(f"Datos_{numero_hoja}")
-                    ws.append(encabezado)
-                    filas_en_hoja = 1
-
-                ws.append(valores)
-                filas_en_hoja += 1
+        hoja = wb.active
+        primera_fila = True
+        for fila in hoja.iter_rows(values_only=True):
+            valores = list(fila)
+            if primera_fila:
+                primera_fila = False
+                if not encabezado_escrito:
+                    ws.append(valores)
+                    encabezado_escrito = True
+                continue
+            ws.append(valores)
         wb.close()
 
     wb_final.save(ruta_final)
@@ -243,27 +232,6 @@ def _consolidar_convertidos(rutas, prefijo):
     return ruta_final
 
 
-def _consolidar_partes(rutas, encabezado, prefijo):
-    """Une partes temporales en un solo libro con varias hojas Datos_N."""
-    from openpyxl import load_workbook
-
-    ruta_final = _ruta_temporal(f"{prefijo}cons_")
-    wb_final = Workbook(write_only=True)
-
-    for i, ruta in enumerate(rutas, start=1):
-        ws = wb_final.create_sheet(f"Datos_{i}")
-        wb = load_workbook(ruta, read_only=True, data_only=True)
-        hoja = wb.active
-        for fila in hoja.iter_rows(values_only=True):
-            ws.append(list(fila))
-        wb.close()
-
-    wb_final.save(ruta_final)
-
-    for ruta in rutas:
-        try:
-            os.remove(ruta)
-        except OSError:
-            pass
-
-    return ruta_final
+def _consolidar_partes(rutas, prefijo):
+    """Si un solo original se partió por límite Excel, une las partes como archivos."""
+    return _consolidar_convertidos(rutas, prefijo)
