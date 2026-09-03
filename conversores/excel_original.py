@@ -202,7 +202,7 @@ def convertir_exceles_originales(
         mensaje = f"Convirtiendo {indice}/{total}: {nombre}"
         print(f"\n[{indice}/{total}] {nombre}")
         if actualizar_estado:
-            progreso = min(90, int(indice / total * 80))
+            progreso = min(90, max(1, int(indice / total * 90)))
             actualizar_estado(mensaje, progreso)
 
         try:
@@ -227,7 +227,7 @@ def convertir_exceles_originales(
         f"Omitidos: {len(omitidos)}"
     )
     if actualizar_estado:
-        actualizar_estado("Consolidando archivos convertidos...", 92)
+        actualizar_estado("Consolidando archivos convertidos...", 96)
 
     consolidado = _consolidar_convertidos(convertidos, prefijo)
 

@@ -5,8 +5,11 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('conversores/config/configuracion.json', 'conversores/config')],
-    hiddenimports=['python_calamine', 'openpyxl', 'xlsxwriter'],
+    datas=[
+        ('conversores/config/configuracion.json', 'conversores/config'),
+        ('assets/metlife_logo.jpg', 'assets'),
+    ],
+    hiddenimports=['python_calamine', 'openpyxl', 'xlsxwriter', 'PIL', 'PIL.Image', 'PIL.ImageTk'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

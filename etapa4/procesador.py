@@ -61,6 +61,11 @@ def cargar_catalogos(ruta_catalogos, hojas_seleccionadas=None):
     return dataframes["PFPM"], dataframes["CONCEPTOS_VIDA"], dataframes["CONCEPTOS_GMM"]
 
 
+def _avisar(actualizar_estado, texto, progreso):
+    if actualizar_estado:
+        actualizar_estado(texto, progreso)
+
+
 def generar_vida_etapa4(
     ruta_vlsp,
     hojas_vlsp,
@@ -68,6 +73,7 @@ def generar_vida_etapa4(
     hojas_tipo,
     ruta_catalogos,
     hojas_catalogos=None,
+    actualizar_estado=None,
 ):
     print("\n" + "=" * 80)
     print("ETAPA 4 VIDA")
@@ -79,12 +85,16 @@ def generar_vida_etapa4(
         hojas_tipo = [hojas_tipo]
 
     df_vida = pd.read_parquet("vida_comisiones.parquet")
+    _avisar(actualizar_estado, "Procesando VLSP...", 20)
     df_vlsp = leer_hojas_seleccionadas(ruta_vlsp, hojas_vlsp)
+    _avisar(actualizar_estado, "Procesando Catálogo Estatus Pólizas...", 40)
     df_tipo = leer_hojas_seleccionadas(ruta_tipo, hojas_tipo, header=2)
+    _avisar(actualizar_estado, "Procesando Catálogos...", 60)
     df_pfpm, df_conceptos_vida, _ = cargar_catalogos(
         ruta_catalogos, hojas_seleccionadas=hojas_catalogos
     )
 
+    _avisar(actualizar_estado, "Procesando reporte VIDA...", 80)
     resultado = construir_vida_etapa4(
         df_vida, df_vlsp, df_tipo, df_pfpm, df_conceptos_vida
     )
@@ -92,16 +102,20 @@ def generar_vida_etapa4(
     return resultado
 
 
-def generar_gmm_etapa4(ruta_catalogos, hojas_catalogos=None):
+def generar_gmm_etapa4(
+    ruta_catalogos, hojas_catalogos=None, actualizar_estado=None
+):
     print("\n" + "=" * 80)
     print("ETAPA 4 GMM")
     print("=" * 80)
 
     df_gmm = pd.read_parquet("gmm_comisiones.parquet")
+    _avisar(actualizar_estado, "Procesando Catálogos...", 25)
     df_pfpm, _, df_conceptos_gmm = cargar_catalogos(
         ruta_catalogos, hojas_seleccionadas=hojas_catalogos
     )
 
+    _avisar(actualizar_estado, "Procesando reporte GMM...", 55)
     resultado = construir_gmm_etapa4(df_gmm, df_pfpm, df_conceptos_gmm)
     print(f"Resultado GMM: {len(resultado):,}")
     return resultado
