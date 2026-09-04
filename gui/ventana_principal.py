@@ -16,7 +16,7 @@ from procesos.bases_sap import generar_bases_sap
 from procesos.comisiones import generar_comisiones
 from procesos.reporte_final import generar_reporte_final
 from servicios.excel import listar_excel_en_carpeta, obtener_hojas, obtener_hojas_union
-from servicios.recursos import ruta_logo
+from servicios.recursos import ruta_icono, ruta_logo
 
 TIPOS_EXCEL = [("Excel", "*.xlsx *.xls")]
 TIPOS_SAA = [
@@ -60,6 +60,7 @@ class VentanaPrincipal:
         self._progreso_minimo = 0
         self._logo_header = None
         self._logo_acerca = None
+        self._icono_ventana = None
 
         self.generar_vida_var = tk.BooleanVar(value=True)
         self.generar_gmm_var = tk.BooleanVar(value=True)
@@ -75,6 +76,26 @@ class VentanaPrincipal:
         self.root.minsize(920, 680)
         style = ttk.Style()
         aplicar_estilos(self.root, style)
+        self._aplicar_icono()
+
+    def _aplicar_icono(self):
+        ruta = ruta_icono()
+        if ruta is None:
+            return
+        ruta_abs = str(ruta.resolve())
+        try:
+            self.root.iconbitmap(default=ruta_abs)
+            self.root.iconbitmap(ruta_abs)
+        except Exception:
+            pass
+        try:
+            from PIL import Image, ImageTk
+
+            imagen = Image.open(ruta)
+            self._icono_ventana = ImageTk.PhotoImage(imagen)
+            self.root.iconphoto(True, self._icono_ventana)
+        except Exception:
+            pass
 
     def _crear_menu(self):
         menubar = tk.Menu(self.root)
