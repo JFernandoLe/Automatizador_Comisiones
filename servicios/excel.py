@@ -5,20 +5,16 @@ from python_calamine import CalamineWorkbook
 
 EXCEL_MAX_ROWS = 1_048_000
 
-
 def _es_xls(archivo):
     return Path(archivo).suffix.lower() == ".xls"
-
 
 def _engine(archivo):
     if _es_xls(archivo):
         return "calamine"
     return "openpyxl"
 
-
 def obtener_hojas(archivo):
     return list(CalamineWorkbook.from_path(str(archivo)).sheet_names)
-
 
 def listar_excel_en_carpeta(carpeta):
     raiz = Path(carpeta)
@@ -33,7 +29,6 @@ def listar_excel_en_carpeta(carpeta):
     ]
     return archivos
 
-
 def obtener_hojas_union(archivos):
     hojas = []
     vistas = set()
@@ -43,7 +38,6 @@ def obtener_hojas_union(archivos):
                 vistas.add(hoja)
                 hojas.append(hoja)
     return hojas
-
 
 def leer_hojas_seleccionadas(archivo, hojas_seleccionadas, header=0):
     if not hojas_seleccionadas:

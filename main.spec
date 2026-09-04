@@ -5,11 +5,8 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[
-        ('conversores/config/configuracion.json', 'conversores/config'),
-        ('assets/metlife_logo.jpg', 'assets'),
-    ],
-    hiddenimports=['python_calamine', 'openpyxl', 'xlsxwriter', 'PIL', 'PIL.Image', 'PIL.ImageTk'],
+    datas=[],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -38,4 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=['icono.ico'],
 )
