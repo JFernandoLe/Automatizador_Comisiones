@@ -4,22 +4,24 @@ import pandas as pd
 from python_calamine import CalamineWorkbook
 
 EXCEL_MAX_ROWS = 1_048_000
+EXTENSIONES_CALAMINE = {".xls", ".xlsb"}
 
-def _es_xls(archivo):
-    return Path(archivo).suffix.lower() == ".xls"
 
 def _engine(archivo):
-    if _es_xls(archivo):
+    if Path(archivo).suffix.lower() in EXTENSIONES_CALAMINE:
         return "calamine"
     return "openpyxl"
 
 def obtener_hojas(archivo):
     return list(CalamineWorkbook.from_path(str(archivo)).sheet_names)
 
-def listar_excel_en_carpeta(carpeta):
+def listar_excel_en_carpeta(carpeta, incluir_xlsb=False):
     raiz = Path(carpeta)
+    patrones = ["*.xls", "*.xlsx"]
+    if incluir_xlsb:
+        patrones.append("*.xlsb")
     archivos = []
-    for patron in ("*.xls", "*.xlsx"):
+    for patron in patrones:
         archivos.extend(raiz.glob(patron))
     archivos = [
         str(a.resolve())

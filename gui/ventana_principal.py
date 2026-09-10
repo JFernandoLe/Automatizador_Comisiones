@@ -19,6 +19,10 @@ from servicios.excel import listar_excel_en_carpeta, obtener_hojas, obtener_hoja
 from servicios.recursos import ruta_icono, ruta_logo
 
 TIPOS_EXCEL = [("Excel", "*.xlsx *.xls")]
+TIPOS_MANUALES = [
+    ("Excel", "*.xlsx *.xls *.xlsb"),
+    ("Excel binario", "*.xlsb"),
+]
 TIPOS_SAA = [
     ("SAA", "*.txt *.xlsx *.xls"),
     ("Texto", "*.txt"),
@@ -237,7 +241,7 @@ class VentanaPrincipal:
             "Acumulado de Comisiones",
             lambda: self._seleccionar_archivos("manuales"),
             lambda: self._seleccionar_carpeta("manuales"),
-            ayuda="Uno o varios Excel originales, o una carpeta.",
+            ayuda="Uno o varios Excel (.xlsx, .xls o .xlsb), o una carpeta.",
         )
         self.frame_pc_manuales_hojas = self._marco_hojas(
             contenido, "Hojas de Acumulado de Comisiones"
@@ -527,7 +531,7 @@ class VentanaPrincipal:
 
         self.entrada_manuales = crear_selector_multiples(
             self.tab_comisiones,
-            "Acumulado Comisiones (varios Excel originales o carpeta)",
+            "Acumulado Comisiones (varios Excel .xlsx, .xls o .xlsb, o carpeta)",
             lambda: self._seleccionar_archivos("manuales"),
             lambda: self._seleccionar_carpeta("manuales"),
         )
@@ -620,16 +624,24 @@ class VentanaPrincipal:
         self.progress_bar.pack(side="left", fill="x", expand=True, padx=8)
         ttk.Label(fila_barra, text="100%", style="Muted.TLabel").pack(side="right")
 
+    @staticmethod
+    def _tipos_dialogo(clave):
+        if clave == "saa":
+            return TIPOS_SAA
+        if clave == "manuales":
+            return TIPOS_MANUALES
+        return TIPOS_EXCEL
+
     def _seleccionar_archivo(self, clave):
-        tipos = TIPOS_SAA if clave == "saa" else TIPOS_EXCEL
-        archivo = filedialog.askopenfilename(filetypes=tipos)
+        archivo = filedialog.askopenfilename(filetypes=self._tipos_dialogo(clave))
         if not archivo:
             return
         self._asignar_archivos(clave, [archivo])
 
     def _seleccionar_archivos(self, clave):
-        tipos = TIPOS_SAA if clave == "saa" else TIPOS_EXCEL
-        seleccion = filedialog.askopenfilenames(filetypes=tipos)
+        seleccion = filedialog.askopenfilenames(
+            filetypes=self._tipos_dialogo(clave)
+        )
         if not seleccion:
             return
         self._asignar_archivos(clave, list(seleccion))
@@ -638,12 +650,16 @@ class VentanaPrincipal:
         carpeta = filedialog.askdirectory()
         if not carpeta:
             return
-        archivos = listar_excel_en_carpeta(carpeta)
+        archivos = listar_excel_en_carpeta(
+            carpeta, incluir_xlsb=(clave == "manuales")
+        )
         if not archivos:
-            messagebox.showerror(
-                "Sin archivos",
-                "La carpeta no contiene Excel .xls o .xlsx.",
+            mensaje = (
+                "La carpeta no contiene Excel .xls, .xlsx o .xlsb."
+                if clave == "manuales"
+                else "La carpeta no contiene Excel .xls o .xlsx."
             )
+            messagebox.showerror("Sin archivos", mensaje)
             return
         self._asignar_archivos(clave, archivos)
 
