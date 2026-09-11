@@ -12,6 +12,7 @@ from gui.componentes import (
     reemplazar_texto,
 )
 from gui.estilos import COLORES, aplicar_estilos
+from fase2.procesador import generar_comision_fase2
 from procesos.bases_sap import generar_bases_sap
 from procesos.comisiones import generar_comisiones
 from procesos.reporte_final import generar_reporte_final
@@ -28,6 +29,11 @@ TIPOS_SAA = [
     ("Texto", "*.txt"),
     ("Excel", "*.xlsx *.xls"),
 ]
+TIPOS_REPORTE = [
+    ("Reportes", "*.xlsx *.xls *.parquet"),
+    ("Excel", "*.xlsx *.xls"),
+    ("Parquet", "*.parquet"),
+]
 CLAVES_MULTIPLES = ("vida", "gmm", "saa", "manuales")
 
 
@@ -43,6 +49,16 @@ class VentanaPrincipal:
             "tipo": None,
             "catalogos": None,
         }
+        self.archivos_fase2 = {
+            "vida": None,
+            "gmm": None,
+            "dist": None,
+            "catalogos": None,
+        }
+        self.checks_f2_vida = []
+        self.checks_f2_gmm = []
+        self.checks_f2_dist = []
+        self.checks_f2_catalogos = []
         self.checks_vida = []
         self.checks_gmm = []
         self.checks_saa = []
@@ -122,8 +138,10 @@ class VentanaPrincipal:
         self.notebook.pack(fill="both", expand=True)
 
         self.tab_completo = ttk.Frame(self.notebook, style="Fondo.TFrame")
+        self.tab_fase2 = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_acerca = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.notebook.add(self.tab_completo, text="Proceso")
+        self.notebook.add(self.tab_fase2, text="Fase 2")
         self.notebook.add(self.tab_acerca, text="Acerca de")
 
         self.tab_bases = ttk.Frame(self.root)
@@ -131,6 +149,7 @@ class VentanaPrincipal:
         self.tab_reporte = ttk.Frame(self.root)
 
         self._crear_tab_completo()
+        self._crear_tab_fase2()
         self._crear_tab_acerca()
         self._crear_tab_bases()
         self._crear_tab_comisiones()
@@ -382,6 +401,112 @@ class VentanaPrincipal:
             style="Muted.TLabel",
         ).pack(anchor="w", padx=6, pady=4)
         return marco
+
+    def _crear_tab_fase2(self):
+        contenido = crear_area_desplazable(self.tab_fase2)
+
+        exterior = tk.Frame(contenido, bg=COLORES["fondo"])
+        exterior.pack(fill="x", padx=28, pady=(18, 10))
+        borde = tk.Frame(exterior, bg=COLORES["borde"])
+        borde.pack(fill="x")
+        tarjeta = tk.Frame(borde, bg=COLORES["tarjeta"])
+        tarjeta.pack(fill="x", padx=1, pady=1)
+        acento = tk.Frame(tarjeta, bg=COLORES["primario"], width=4)
+        acento.pack(side="left", fill="y")
+        cuerpo = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
+        cuerpo.pack(fill="x", padx=16, pady=14)
+        ttk.Label(
+            cuerpo, text="Fase 2 · Comisión", style="CardTitle.TLabel"
+        ).pack(anchor="w")
+        ttk.Label(
+            cuerpo,
+            text=(
+                "Usa los reportes finales de la Fase 1 (Reporte_VIDA_Final y "
+                "Reporte_GMM_Final). Puede ejecutarse sin repetir la Fase 1 "
+                "si esos archivos ya existen. El resultado se guarda como Comision.xlsx."
+            ),
+            style="Muted.TLabel",
+            wraplength=900,
+        ).pack(anchor="w", pady=(4, 0))
+
+        ttk.Label(contenido, text="Reportes de la Fase 1", style="Section.TLabel").pack(
+            anchor="w", padx=28, pady=(8, 2)
+        )
+
+        self.entrada_f2_vida = crear_selector_archivo(
+            contenido,
+            "Reporte VIDA Final",
+            lambda: self._seleccionar_archivo_fase2("vida"),
+            ayuda="Excel o parquet generado por la Fase 1.",
+        )
+        self.frame_f2_vida_hojas = self._marco_hojas(
+            contenido, "Hojas de Reporte VIDA Final"
+        )
+
+        self.entrada_f2_gmm = crear_selector_archivo(
+            contenido,
+            "Reporte GMM Final",
+            lambda: self._seleccionar_archivo_fase2("gmm"),
+            ayuda="Excel o parquet generado por la Fase 1.",
+        )
+        self.frame_f2_gmm_hojas = self._marco_hojas(
+            contenido, "Hojas de Reporte GMM Final"
+        )
+
+        ttk.Label(
+            contenido, text="Referencias de la Fase 2", style="Section.TLabel"
+        ).pack(anchor="w", padx=28, pady=(18, 2))
+
+        self.entrada_f2_dist = crear_selector_archivo(
+            contenido,
+            "Distribución Comercial",
+            lambda: self._seleccionar_archivo_fase2("dist"),
+            ayuda="Excel. Se busca Promotor en la columna A y se toma la columna B.",
+        )
+        self.frame_f2_dist_hojas = self._marco_hojas(
+            contenido, "Hojas de Distribución Comercial"
+        )
+
+        self.entrada_f2_catalogos = crear_selector_archivo(
+            contenido,
+            "Archivo de Catálogos",
+            lambda: self._seleccionar_archivo_fase2("catalogos"),
+            ayuda="Debe incluir la hoja PFPM (AGENTE_ORIGINAL y AGENTE_REPORTERIA).",
+        )
+        self.frame_f2_catalogos_hojas = self._marco_hojas(
+            contenido, "Hojas de Catálogos"
+        )
+
+        boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
+        boton_frame.pack(pady=(24, 36))
+        self.boton_fase2 = tk.Button(
+            boton_frame,
+            text="Generar Comisión",
+            command=self.ejecutar_fase2,
+            bg=COLORES["primario"],
+            fg="#FFFFFF",
+            activebackground=COLORES["primario_hover"],
+            activeforeground="#FFFFFF",
+            font=("Segoe UI Semibold", 12),
+            relief="flat",
+            bd=0,
+            cursor="hand2",
+            padx=32,
+            pady=11,
+        )
+        self.boton_fase2.pack()
+        self.boton_fase2.bind(
+            "<Enter>",
+            lambda _e: self.boton_fase2.config(bg=COLORES["primario_hover"])
+            if str(self.boton_fase2["state"]) == "normal"
+            else None,
+        )
+        self.boton_fase2.bind(
+            "<Leave>",
+            lambda _e: self.boton_fase2.config(bg=COLORES["primario"])
+            if str(self.boton_fase2["state"]) == "normal"
+            else None,
+        )
 
     def _crear_tab_acerca(self):
         contenido = crear_area_desplazable(self.tab_acerca)
@@ -868,18 +993,19 @@ class VentanaPrincipal:
         threading.Thread(target=funcion, daemon=True).start()
 
     def _set_ejecutando(self, ejecutando):
+        botones = [self.boton_proceso_completo]
+        if getattr(self, "boton_fase2", None) is not None:
+            botones.append(self.boton_fase2)
         if ejecutando:
-            self.boton_proceso_completo.config(
-                state="disabled",
-                bg="#9BB8C7",
-                cursor="arrow",
-            )
+            for boton in botones:
+                boton.config(state="disabled", bg="#9BB8C7", cursor="arrow")
         else:
-            self.boton_proceso_completo.config(
-                state="normal",
-                bg=COLORES["primario"],
-                cursor="hand2",
-            )
+            for boton in botones:
+                boton.config(
+                    state="normal",
+                    bg=COLORES["primario"],
+                    cursor="hand2",
+                )
 
     def _manejar_error(self, error):
         import traceback
@@ -1022,6 +1148,101 @@ class VentanaPrincipal:
                 lambda: messagebox.showinfo(
                     "CommiFlow",
                     "Proceso completado correctamente.",
+                ),
+            )
+        except Exception as error:
+            self._manejar_error(error)
+        finally:
+            self._progreso_global = False
+            self.root.after(0, lambda: self._set_ejecutando(False))
+
+    def _seleccionar_archivo_fase2(self, clave):
+        tipos = TIPOS_REPORTE if clave in ("vida", "gmm") else TIPOS_EXCEL
+        archivo = filedialog.askopenfilename(filetypes=tipos)
+        if not archivo:
+            return
+        self.archivos_fase2[clave] = archivo
+        entradas = {
+            "vida": self.entrada_f2_vida,
+            "gmm": self.entrada_f2_gmm,
+            "dist": self.entrada_f2_dist,
+            "catalogos": self.entrada_f2_catalogos,
+        }
+        reemplazar_texto(entradas[clave], archivo)
+
+        frames = {
+            "vida": ("frame_f2_vida_hojas", "checks_f2_vida"),
+            "gmm": ("frame_f2_gmm_hojas", "checks_f2_gmm"),
+            "dist": ("frame_f2_dist_hojas", "checks_f2_dist"),
+            "catalogos": ("frame_f2_catalogos_hojas", "checks_f2_catalogos"),
+        }
+        frame_attr, checks_attr = frames[clave]
+        frame = getattr(self, frame_attr)
+
+        if Path(archivo).suffix.lower() == ".parquet":
+            self._mensaje_hojas(frame, "No aplica selección de hojas para archivo parquet.")
+            setattr(self, checks_attr, [])
+            return
+
+        self._actualizar_hojas_fase2(clave, obtener_hojas(archivo))
+
+    def _actualizar_hojas_fase2(self, clave, hojas):
+        pares = {
+            "vida": ("frame_f2_vida_hojas", "checks_f2_vida"),
+            "gmm": ("frame_f2_gmm_hojas", "checks_f2_gmm"),
+            "dist": ("frame_f2_dist_hojas", "checks_f2_dist"),
+            "catalogos": ("frame_f2_catalogos_hojas", "checks_f2_catalogos"),
+        }
+        frame_attr, checks_attr = pares[clave]
+        frame = getattr(self, frame_attr)
+        if not hojas:
+            self._mensaje_hojas(frame, "El archivo no contiene hojas.")
+            setattr(self, checks_attr, [])
+            return
+        setattr(self, checks_attr, llenar_checks(frame, hojas))
+
+    def _hojas_fase2(self, clave):
+        nombres = {
+            "vida": ("Reporte VIDA Final", self.checks_f2_vida),
+            "gmm": ("Reporte GMM Final", self.checks_f2_gmm),
+            "dist": ("Distribución Comercial", self.checks_f2_dist),
+            "catalogos": ("Catálogos", self.checks_f2_catalogos),
+        }
+        nombre, checks = nombres[clave]
+        archivo = self.archivos_fase2.get(clave)
+        if archivo and Path(archivo).suffix.lower() == ".parquet":
+            return None
+        hojas = [hoja for hoja, variable in checks if variable.get()]
+        if not hojas:
+            raise ValueError(f"Debe seleccionar al menos una hoja de {nombre}.")
+        return hojas
+
+    def ejecutar_fase2(self):
+        self._ejecutar_en_hilo(self._worker_fase2)
+
+    def _worker_fase2(self):
+        self.root.after(0, lambda: self._set_ejecutando(True))
+        self._progreso_global = True
+        self._progreso_minimo = 0
+        self.actualizar_estado("Iniciando Fase 2...", 0)
+        try:
+            generar_comision_fase2(
+                self.archivos_fase2["vida"],
+                self._hojas_fase2("vida"),
+                self.archivos_fase2["gmm"],
+                self._hojas_fase2("gmm"),
+                self.archivos_fase2["dist"],
+                self._hojas_fase2("dist"),
+                self.archivos_fase2["catalogos"],
+                self._hojas_fase2("catalogos"),
+                actualizar_estado=self.actualizar_estado,
+            )
+            self.actualizar_estado("Fase 2 completada correctamente", 100, "ok")
+            self.root.after(
+                0,
+                lambda: messagebox.showinfo(
+                    "CommiFlow",
+                    "Fase 2 completada. Se generó Comision.xlsx.",
                 ),
             )
         except Exception as error:
