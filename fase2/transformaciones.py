@@ -339,10 +339,17 @@ def construir_pagos_bonos(df, dist_map, pfpm_map):
         return dist_map[clave]
 
     def lookup_pfpm(valor):
-        clave = _a_entero(valor)
-        if clave is None or clave not in pfpm_map:
+        if valor is None:
             return None
-        return pfpm_map[clave]
+        try:
+            if pd.isna(valor):
+                return None
+        except (TypeError, ValueError):
+            pass
+        clave = _a_entero(valor)
+        if clave is not None and clave in pfpm_map:
+            return pfpm_map[clave]
+        return valor
 
     polizas = original_prom.map(lookup_dist)
     salida[col_prima] = original_prom
