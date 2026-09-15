@@ -302,3 +302,50 @@ def construir_tabla_gmm(df, dist_map, pfpm_map):
     if not filas:
         return pd.DataFrame(columns=COLUMNAS_GMM)
     return pd.DataFrame(filas)[COLUMNAS_GMM]
+
+
+def _norm_nombre(valor):
+    return (
+        str(valor)
+        .strip()
+        .upper()
+        .replace("Á", "A")
+        .replace("É", "E")
+        .replace("Í", "I")
+        .replace("Ó", "O")
+        .replace("Ú", "U")
+    )
+
+
+def _buscar_columna(df, nombre):
+    objetivo = _norm_nombre(nombre)
+    for col in df.columns:
+        if _norm_nombre(col) == objetivo:
+            return col
+    raise ValueError(f"El archivo Bonos no contiene la columna '{nombre}'.")
+
+
+def construir_pagos_bonos(df, dist_map, pfpm_map):
+    salida = df.copy()
+    col_prom = _buscar_columna(salida, "Promotoria")
+    col_prima = _buscar_columna(salida, "Prima")
+    col_poliza = _buscar_columna(salida, "Póliza")
+    original_prom = salida[col_prom].copy()
+
+    def lookup_dist(valor):
+        clave = _a_entero(valor)
+        if clave is None or clave not in dist_map:
+            return None
+        return dist_map[clave]
+
+    def lookup_pfpm(valor):
+        clave = _a_entero(valor)
+        if clave is None or clave not in pfpm_map:
+            return None
+        return pfpm_map[clave]
+
+    polizas = original_prom.map(lookup_dist)
+    salida[col_prima] = original_prom
+    salida[col_poliza] = polizas
+    salida[col_prom] = polizas.map(lookup_pfpm)
+    return salida

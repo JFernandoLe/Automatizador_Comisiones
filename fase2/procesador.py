@@ -4,6 +4,7 @@ import pandas as pd
 
 from fase2.excel_salida import guardar_comision
 from fase2.transformaciones import (
+    construir_pagos_bonos,
     construir_tabla_gmm,
     construir_tabla_vida,
     crear_dist_map,
@@ -67,6 +68,14 @@ def cargar_distribucion(ruta, hojas):
     return crear_dist_map(df)
 
 
+def leer_bonos(ruta, hojas):
+    if not ruta:
+        raise ValueError("Debe seleccionar el archivo Bonos.")
+    if not hojas:
+        raise ValueError("Debe seleccionar al menos una hoja de Bonos.")
+    return leer_hojas_seleccionadas(ruta, hojas, header=1)
+
+
 def generar_comision_fase2(
     ruta_vida,
     hojas_vida,
@@ -76,26 +85,35 @@ def generar_comision_fase2(
     hojas_dist,
     ruta_catalogos,
     hojas_catalogos,
+    ruta_bonos,
+    hojas_bonos,
     actualizar_estado=None,
     ruta_salida="Comision.xlsx",
 ):
-    _avisar(actualizar_estado, "Leyendo Reporte VIDA Final...", 8)
+    _avisar(actualizar_estado, "Leyendo Reporte VIDA Final...", 6)
     df_vida = leer_reporte(ruta_vida, hojas_vida)
-    _avisar(actualizar_estado, "Leyendo Reporte GMM Final...", 22)
+    _avisar(actualizar_estado, "Leyendo Reporte GMM Final...", 16)
     df_gmm = leer_reporte(ruta_gmm, hojas_gmm)
-    _avisar(actualizar_estado, "Leyendo Distribución Comercial...", 40)
+    _avisar(actualizar_estado, "Leyendo Distribución Comercial...", 28)
     dist_map = cargar_distribucion(ruta_dist, hojas_dist)
-    _avisar(actualizar_estado, "Leyendo catálogo PFPM...", 55)
+    _avisar(actualizar_estado, "Leyendo catálogo PFPM...", 38)
     pfpm_map = cargar_pfpm(ruta_catalogos, hojas_catalogos)
+    _avisar(actualizar_estado, "Leyendo archivo Bonos...", 48)
+    df_bonos = leer_bonos(ruta_bonos, hojas_bonos)
 
-    _avisar(actualizar_estado, "Construyendo tabla VIDA...", 68)
+    _avisar(actualizar_estado, "Construyendo tabla VIDA...", 60)
     tabla_vida = construir_tabla_vida(df_vida, dist_map, pfpm_map)
-    _avisar(actualizar_estado, "Construyendo tabla GMM...", 82)
+    _avisar(actualizar_estado, "Construyendo tabla GMM...", 72)
     tabla_gmm = construir_tabla_gmm(df_gmm, dist_map, pfpm_map)
+    _avisar(actualizar_estado, "Procesando Pagos de Bonos...", 84)
+    tabla_bonos = construir_pagos_bonos(df_bonos, dist_map, pfpm_map)
 
-    _avisar(actualizar_estado, "Generando Comision.xlsx...", 92)
-    ruta = guardar_comision(tabla_vida, tabla_gmm, ruta_salida)
+    _avisar(actualizar_estado, "Generando Comision.xlsx...", 93)
+    ruta = guardar_comision(tabla_vida, tabla_gmm, tabla_bonos, ruta_salida)
     _avisar(actualizar_estado, "Fase 2 generada", 100)
-    print(f"VIDA filas: {len(tabla_vida):,} | GMM filas: {len(tabla_gmm):,}")
+    print(
+        f"VIDA filas: {len(tabla_vida):,} | GMM filas: {len(tabla_gmm):,} | "
+        f"Bonos filas: {len(tabla_bonos):,}"
+    )
     print(f"Archivo generado: {ruta}")
     return ruta

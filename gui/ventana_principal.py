@@ -54,11 +54,13 @@ class VentanaPrincipal:
             "gmm": None,
             "dist": None,
             "catalogos": None,
+            "bonos": None,
         }
         self.checks_f2_vida = []
         self.checks_f2_gmm = []
         self.checks_f2_dist = []
         self.checks_f2_catalogos = []
+        self.checks_f2_bonos = []
         self.checks_vida = []
         self.checks_gmm = []
         self.checks_saa = []
@@ -421,9 +423,10 @@ class VentanaPrincipal:
         ttk.Label(
             cuerpo,
             text=(
-                "Usa los reportes finales de la Fase 1 (Reporte_VIDA_Final y "
-                "Reporte_GMM_Final). Puede ejecutarse sin repetir la Fase 1 "
-                "si esos archivos ya existen. El resultado se guarda como Comision.xlsx."
+                "Usa los reportes finales de la Fase 1, Distribución Comercial, "
+                "catálogos y Bonos. Puede ejecutarse sin repetir la Fase 1 si "
+                "esos reportes ya existen. El resultado se guarda como Comision.xlsx "
+                "con la hoja Pagos_de_Bonos."
             ),
             style="Muted.TLabel",
             wraplength=900,
@@ -476,6 +479,14 @@ class VentanaPrincipal:
         self.frame_f2_catalogos_hojas = self._marco_hojas(
             contenido, "Hojas de Catálogos"
         )
+
+        self.entrada_f2_bonos = crear_selector_archivo(
+            contenido,
+            "Bonos",
+            lambda: self._seleccionar_archivo_fase2("bonos"),
+            ayuda="Excel. Encabezados en la fila 2; los datos empiezan en la fila 3.",
+        )
+        self.frame_f2_bonos_hojas = self._marco_hojas(contenido, "Hojas de Bonos")
 
         boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
         boton_frame.pack(pady=(24, 36))
@@ -1167,6 +1178,7 @@ class VentanaPrincipal:
             "gmm": self.entrada_f2_gmm,
             "dist": self.entrada_f2_dist,
             "catalogos": self.entrada_f2_catalogos,
+            "bonos": self.entrada_f2_bonos,
         }
         reemplazar_texto(entradas[clave], archivo)
 
@@ -1175,6 +1187,7 @@ class VentanaPrincipal:
             "gmm": ("frame_f2_gmm_hojas", "checks_f2_gmm"),
             "dist": ("frame_f2_dist_hojas", "checks_f2_dist"),
             "catalogos": ("frame_f2_catalogos_hojas", "checks_f2_catalogos"),
+            "bonos": ("frame_f2_bonos_hojas", "checks_f2_bonos"),
         }
         frame_attr, checks_attr = frames[clave]
         frame = getattr(self, frame_attr)
@@ -1192,6 +1205,7 @@ class VentanaPrincipal:
             "gmm": ("frame_f2_gmm_hojas", "checks_f2_gmm"),
             "dist": ("frame_f2_dist_hojas", "checks_f2_dist"),
             "catalogos": ("frame_f2_catalogos_hojas", "checks_f2_catalogos"),
+            "bonos": ("frame_f2_bonos_hojas", "checks_f2_bonos"),
         }
         frame_attr, checks_attr = pares[clave]
         frame = getattr(self, frame_attr)
@@ -1207,6 +1221,7 @@ class VentanaPrincipal:
             "gmm": ("Reporte GMM Final", self.checks_f2_gmm),
             "dist": ("Distribución Comercial", self.checks_f2_dist),
             "catalogos": ("Catálogos", self.checks_f2_catalogos),
+            "bonos": ("Bonos", self.checks_f2_bonos),
         }
         nombre, checks = nombres[clave]
         archivo = self.archivos_fase2.get(clave)
@@ -1235,6 +1250,8 @@ class VentanaPrincipal:
                 self._hojas_fase2("dist"),
                 self.archivos_fase2["catalogos"],
                 self._hojas_fase2("catalogos"),
+                self.archivos_fase2["bonos"],
+                self._hojas_fase2("bonos"),
                 actualizar_estado=self.actualizar_estado,
             )
             self.actualizar_estado("Fase 2 completada correctamente", 100, "ok")
@@ -1242,7 +1259,7 @@ class VentanaPrincipal:
                 0,
                 lambda: messagebox.showinfo(
                     "CommiFlow",
-                    "Fase 2 completada. Se generó Comision.xlsx.",
+                    "Fase 2 completada. Se generó Comision.xlsx con la hoja Pagos_de_Bonos.",
                 ),
             )
         except Exception as error:

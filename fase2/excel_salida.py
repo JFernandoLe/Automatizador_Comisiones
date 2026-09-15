@@ -2,6 +2,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils.dataframe import dataframe_to_rows
 
+import pandas as pd
+
 from fase2.transformaciones import COLUMNAS_GMM, COLUMNAS_VIDA
 
 FUENTE = Font(name="Calibri", size=12)
@@ -124,7 +126,34 @@ def _escribir_bloque(ws, df, columnas, col_inicio, filas_monto):
                 celda.number_format = FORMATO_MONTO
 
 
-def guardar_comision(df_vida, df_gmm, ruta="Comision.xlsx"):
+def _valor_celda(valor):
+    if valor is None:
+        return None
+    try:
+        if pd.isna(valor):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return valor
+
+
+def _escribir_pagos_bonos(wb, df):
+    ws = wb.create_sheet("Pagos_de_Bonos")
+    for indice, nombre in enumerate(df.columns, start=1):
+        celda = ws.cell(row=1, column=indice, value=str(nombre))
+        celda.font = FUENTE_TITULO
+        celda.alignment = CENTRO
+    for offset, fila in enumerate(
+        dataframe_to_rows(df, index=False, header=False), start=2
+    ):
+        for indice, valor in enumerate(fila, start=1):
+            celda = ws.cell(row=offset, column=indice, value=_valor_celda(valor))
+            celda.font = FUENTE
+            if "FECHA" in str(df.columns[indice - 1]).strip().upper():
+                celda.number_format = "dd/mm/yyyy"
+
+
+def guardar_comision(df_vida, df_gmm, df_bonos, ruta="Comision.xlsx"):
     wb = Workbook()
     ws = wb.active
     ws.title = "Comision"
@@ -147,5 +176,6 @@ def guardar_comision(df_vida, df_gmm, ruta="Comision.xlsx"):
     for col, ancho in anchos.items():
         ws.column_dimensions[col].width = ancho
 
+    _escribir_pagos_bonos(wb, df_bonos)
     wb.save(ruta)
     return ruta
