@@ -5,11 +5,10 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 import pandas as pd
 
 from fase2.transformaciones import (
-    COLUMNAS_DETALLE,
     COLUMNAS_GMM,
     COLUMNAS_VIDA,
-    construir_tabla_combinaciones_bonos,
     construir_tabla_principal_bonos,
+    construir_tablas_combinacion_bonos,
 )
 
 FUENTE = Font(name="Calibri", size=12)
@@ -171,25 +170,42 @@ def _escribir_tabla_principal(ws, filas, col_inicio):
 
 
 SEPARACION_TABLAS = 3
+ANCHO_TABLA_MINI = 2
 
 
-def _escribir_tabla_combinaciones(ws, titulo, filas, col_inicio):
-    titulo_celda = ws.cell(row=1, column=col_inicio, value=titulo)
-    titulo_celda.font = FUENTE_TITULO
-    for indice, nombre in enumerate(COLUMNAS_DETALLE):
-        celda = ws.cell(row=2, column=col_inicio + indice, value=nombre)
-        celda.font = FUENTE_TITULO
-        celda.alignment = CENTRO
-    for offset, fila in enumerate(filas, start=3):
-        for indice, nombre in enumerate(COLUMNAS_DETALLE):
-            celda = ws.cell(
-                row=offset,
-                column=col_inicio + indice,
-                value=_valor_celda(fila[nombre]),
-            )
-            celda.font = FUENTE
-            if nombre == "Suma de importe":
-                celda.number_format = FORMATO_MONTO
+def _escribir_tabla_combinacion(ws, tabla, col_inicio):
+    ws.cell(row=1, column=col_inicio, value=tabla["figura"]).font = FUENTE_TITULO
+    ws.cell(row=2, column=col_inicio, value=tabla["ramo2"]).font = FUENTE_TITULO
+    ws.cell(row=3, column=col_inicio, value=tabla["ini_ren"]).font = FUENTE_TITULO
+    encabezado_clave = ws.cell(
+        row=4, column=col_inicio, value=tabla["nombre_clave"]
+    )
+    encabezado_importe = ws.cell(
+        row=4, column=col_inicio + 1, value="Suma de importe"
+    )
+    encabezado_clave.font = FUENTE_TITULO
+    encabezado_importe.font = FUENTE_TITULO
+    encabezado_clave.alignment = CENTRO
+    encabezado_importe.alignment = CENTRO
+    for offset, fila in enumerate(tabla["filas"], start=5):
+        ws.cell(
+            row=offset, column=col_inicio, value=_valor_celda(fila["clave"])
+        ).font = FUENTE
+        celda_importe = ws.cell(
+            row=offset,
+            column=col_inicio + 1,
+            value=_valor_celda(fila["importe"]),
+        )
+        celda_importe.font = FUENTE
+        celda_importe.number_format = FORMATO_MONTO
+
+
+def _escribir_bloque_combinaciones(ws, tablas, col_inicio):
+    columna = col_inicio
+    for tabla in tablas:
+        _escribir_tabla_combinacion(ws, tabla, columna)
+        columna += ANCHO_TABLA_MINI + SEPARACION_TABLAS
+    return columna
 
 
 def _escribir_pagos_bonos(wb, df):
@@ -212,17 +228,14 @@ def _escribir_pagos_bonos(wb, df):
         ws, construir_tabla_principal_bonos(df), col_resumen
     )
     col_promotor = col_resumen + 4 + SEPARACION_TABLAS
-    _escribir_tabla_combinaciones(
+    col_agente = _escribir_bloque_combinaciones(
         ws,
-        "Promotor",
-        construir_tabla_combinaciones_bonos(df, "PROMOTOR"),
+        construir_tablas_combinacion_bonos(df, "PROMOTOR"),
         col_promotor,
     )
-    col_agente = col_promotor + len(COLUMNAS_DETALLE) + SEPARACION_TABLAS
-    _escribir_tabla_combinaciones(
+    _escribir_bloque_combinaciones(
         ws,
-        "Agente",
-        construir_tabla_combinaciones_bonos(df, "AGENTE"),
+        construir_tablas_combinacion_bonos(df, "AGENTE"),
         col_agente,
     )
 

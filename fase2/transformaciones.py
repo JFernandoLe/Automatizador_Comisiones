@@ -571,13 +571,6 @@ def construir_tabla_principal_bonos(df):
 
 RAMOS2_DETALLE = ("1Vida", "2GMM")
 CONCEPTOS_DETALLE = ("Primer Año", "Conservación", "Campaña")
-COLUMNAS_DETALLE = (
-    "Prom_Agte",
-    "Ramo2",
-    "Ini_Ren",
-    "Promotoria",
-    "Suma de importe",
-)
 
 
 def _ramo2_etiqueta(valor):
@@ -589,7 +582,7 @@ def _ramo2_etiqueta(valor):
     return None
 
 
-def _promotoria_detalle(valor):
+def _clave_detalle(valor):
     if valor is None:
         return None
     try:
@@ -606,60 +599,79 @@ def _promotoria_detalle(valor):
     return texto
 
 
-def _ordenar_promotoria(valor):
+def _ordenar_clave(valor):
     entero = _a_entero(valor)
     if entero is not None:
         return (0, entero)
     return (1, str(valor))
 
 
-def construir_tabla_combinaciones_bonos(df, figura):
-    col_prom = _buscar_columna(df, "Promotoria")
+def construir_tablas_combinacion_bonos(df, figura):
     col_importe = _buscar_columna(df, "Importe")
+    if figura == "AGENTE":
+        col_clave = _buscar_columna(df, "Agente")
+        nombre_clave = "Agente"
+    else:
+        col_clave = _buscar_columna(df, "Promotoria")
+        nombre_clave = "Promotoria"
+
     trabajo = pd.DataFrame(
         {
             "Prom_Agte": df["Prom_Agte"].map(_figura_resumen),
             "Ramo2": df["Ramo_clasif"].map(_ramo2_etiqueta),
             "Ini_Ren": df["Ini_Ren"].map(_ini_ren_resumen),
-            "Promotoria": df[col_prom].map(_promotoria_detalle),
+            "Clave": df[col_clave].map(_clave_detalle),
             "Importe": pd.to_numeric(df[col_importe], errors="coerce").fillna(0),
         }
     )
     trabajo = trabajo[trabajo["Prom_Agte"] == figura]
-    promotorias = sorted(
-        {valor for valor in trabajo["Promotoria"] if valor is not None},
-        key=_ordenar_promotoria,
+    claves = sorted(
+        {valor for valor in trabajo["Clave"] if valor is not None},
+        key=_ordenar_clave,
     )
-    if not promotorias:
-        return []
+    tablas = []
+    if not claves:
+        for ramo in RAMOS2_DETALLE:
+            for concepto in CONCEPTOS_DETALLE:
+                tablas.append(
+                    {
+                        "figura": figura,
+                        "ramo2": ramo,
+                        "ini_ren": concepto,
+                        "nombre_clave": nombre_clave,
+                        "filas": [],
+                    }
+                )
+        return tablas
 
     filtrado = trabajo[
         trabajo["Ramo2"].isin(RAMOS2_DETALLE)
         & trabajo["Ini_Ren"].isin(CONCEPTOS_DETALLE)
-        & trabajo["Promotoria"].notna()
+        & trabajo["Clave"].notna()
     ]
     if filtrado.empty:
         sumas = pd.Series(dtype=float)
     else:
         sumas = filtrado.groupby(
-            ["Ramo2", "Ini_Ren", "Promotoria"], dropna=False
+            ["Ramo2", "Ini_Ren", "Clave"], dropna=False
         )["Importe"].sum()
 
-    filas = []
     for ramo in RAMOS2_DETALLE:
         for concepto in CONCEPTOS_DETALLE:
-            for promotoria in promotorias:
-                clave = (ramo, concepto, promotoria)
+            filas = []
+            for clave in claves:
                 monto = 0.0
-                if not sumas.empty and clave in sumas.index:
-                    monto = float(sumas.loc[clave])
-                filas.append(
-                    {
-                        "Prom_Agte": figura,
-                        "Ramo2": ramo,
-                        "Ini_Ren": concepto,
-                        "Promotoria": promotoria,
-                        "Suma de importe": monto,
-                    }
-                )
-    return filas
+                indice = (ramo, concepto, clave)
+                if not sumas.empty and indice in sumas.index:
+                    monto = float(sumas.loc[indice])
+                filas.append({"clave": clave, "importe": monto})
+            tablas.append(
+                {
+                    "figura": figura,
+                    "ramo2": ramo,
+                    "ini_ren": concepto,
+                    "nombre_clave": nombre_clave,
+                    "filas": filas,
+                }
+            )
+    return tablas
