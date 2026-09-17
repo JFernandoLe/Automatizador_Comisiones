@@ -137,10 +137,16 @@ def _valor_celda(valor):
     return valor
 
 
+def _nombre_columna_bonos(nombre):
+    if str(nombre).strip() == "Ramo_clasif":
+        return "Ramo"
+    return str(nombre)
+
+
 def _escribir_pagos_bonos(wb, df):
     ws = wb.create_sheet("Pagos_de_Bonos")
     for indice, nombre in enumerate(df.columns, start=1):
-        celda = ws.cell(row=1, column=indice, value=str(nombre))
+        celda = ws.cell(row=1, column=indice, value=_nombre_columna_bonos(nombre))
         celda.font = FUENTE_TITULO
         celda.alignment = CENTRO
     for offset, fila in enumerate(

@@ -7,6 +7,7 @@ from fase2.transformaciones import (
     construir_pagos_bonos,
     construir_tabla_gmm,
     construir_tabla_vida,
+    crear_clasif_map,
     crear_dist_map,
     crear_pfpm_map,
 )
@@ -76,6 +77,17 @@ def leer_bonos(ruta, hojas):
     return leer_hojas_seleccionadas(ruta, hojas, header=1)
 
 
+def cargar_clasificaciones(ruta, hojas):
+    if not ruta:
+        raise ValueError("Debe seleccionar el Catálogo de clasificaciones.")
+    if not hojas:
+        raise ValueError(
+            "Debe seleccionar las hojas VIDA y GMM del Catálogo de clasificaciones."
+        )
+    df = leer_hojas_seleccionadas(ruta, hojas)
+    return crear_clasif_map(df)
+
+
 def generar_comision_fase2(
     ruta_vida,
     hojas_vida,
@@ -87,26 +99,30 @@ def generar_comision_fase2(
     hojas_catalogos,
     ruta_bonos,
     hojas_bonos,
+    ruta_clasif,
+    hojas_clasif,
     actualizar_estado=None,
     ruta_salida="Comision.xlsx",
 ):
     _avisar(actualizar_estado, "Leyendo Reporte VIDA Final...", 6)
     df_vida = leer_reporte(ruta_vida, hojas_vida)
-    _avisar(actualizar_estado, "Leyendo Reporte GMM Final...", 16)
+    _avisar(actualizar_estado, "Leyendo Reporte GMM Final...", 14)
     df_gmm = leer_reporte(ruta_gmm, hojas_gmm)
-    _avisar(actualizar_estado, "Leyendo Distribución Comercial...", 28)
+    _avisar(actualizar_estado, "Leyendo Distribución Comercial...", 24)
     dist_map = cargar_distribucion(ruta_dist, hojas_dist)
-    _avisar(actualizar_estado, "Leyendo catálogo PFPM...", 38)
+    _avisar(actualizar_estado, "Leyendo catálogo PFPM...", 32)
     pfpm_map = cargar_pfpm(ruta_catalogos, hojas_catalogos)
-    _avisar(actualizar_estado, "Leyendo archivo Bonos...", 48)
+    _avisar(actualizar_estado, "Leyendo archivo Bonos...", 42)
     df_bonos = leer_bonos(ruta_bonos, hojas_bonos)
+    _avisar(actualizar_estado, "Leyendo Catálogo de clasificaciones...", 52)
+    clasif_map = cargar_clasificaciones(ruta_clasif, hojas_clasif)
 
-    _avisar(actualizar_estado, "Construyendo tabla VIDA...", 60)
+    _avisar(actualizar_estado, "Construyendo tabla VIDA...", 62)
     tabla_vida = construir_tabla_vida(df_vida, dist_map, pfpm_map)
     _avisar(actualizar_estado, "Construyendo tabla GMM...", 72)
     tabla_gmm = construir_tabla_gmm(df_gmm, dist_map, pfpm_map)
     _avisar(actualizar_estado, "Procesando Pagos de Bonos...", 84)
-    tabla_bonos = construir_pagos_bonos(df_bonos, dist_map, pfpm_map)
+    tabla_bonos = construir_pagos_bonos(df_bonos, dist_map, pfpm_map, clasif_map)
 
     _avisar(actualizar_estado, "Generando Comision.xlsx...", 93)
     ruta = guardar_comision(tabla_vida, tabla_gmm, tabla_bonos, ruta_salida)

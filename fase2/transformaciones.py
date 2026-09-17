@@ -317,19 +317,71 @@ def _norm_nombre(valor):
     )
 
 
-def _buscar_columna(df, nombre):
+def _buscar_columna(df, nombre, origen="Bonos"):
     objetivo = _norm_nombre(nombre)
     for col in df.columns:
         if _norm_nombre(col) == objetivo:
             return col
-    raise ValueError(f"El archivo Bonos no contiene la columna '{nombre}'.")
+    raise ValueError(f"El archivo {origen} no contiene la columna '{nombre}'.")
 
 
-def construir_pagos_bonos(df, dist_map, pfpm_map):
+def _clave_cc(valor):
+    entero = _a_entero(valor)
+    if entero is not None:
+        return entero
+    texto = str(valor).strip()
+    if not texto or texto.upper() in {"NAN", "NONE", "NAT"}:
+        return None
+    return texto
+
+
+def crear_clasif_map(df):
+    col_cc = _buscar_columna(df, "CC", origen="Catálogo de clasificaciones")
+    col_figura = _buscar_columna(df, "FIGURA", origen="Catálogo de clasificaciones")
+    col_ini = _buscar_columna(df, "Ini_Ren", origen="Catálogo de clasificaciones")
+    col_ramo = _buscar_columna(df, "Ramo", origen="Catálogo de clasificaciones")
+    mapa = {}
+    for _, fila in df.iterrows():
+        clave = _clave_cc(fila[col_cc])
+        if clave is None or clave in mapa:
+            continue
+        figura = fila[col_figura]
+        ini_ren = fila[col_ini]
+        ramo = fila[col_ramo]
+        registro = {
+            "FIGURA": None if pd.isna(figura) else figura,
+            "INI_REN": None if pd.isna(ini_ren) else ini_ren,
+            "RAMO": None if pd.isna(ramo) else ramo,
+        }
+        mapa[clave] = registro
+        entero = _a_entero(clave)
+        if entero is not None and entero not in mapa:
+            mapa[entero] = registro
+        texto = str(clave).strip()
+        if texto not in mapa:
+            mapa[texto] = registro
+    return mapa
+
+
+def _lookup_clasif(valor, clasif_map, campo):
+    clave = _clave_cc(valor)
+    if clave is None:
+        return None
+    registro = clasif_map.get(clave)
+    if registro is None:
+        entero = _a_entero(valor)
+        registro = clasif_map.get(entero) if entero is not None else None
+    if registro is None:
+        return None
+    return registro.get(campo)
+
+
+def construir_pagos_bonos(df, dist_map, pfpm_map, clasif_map):
     salida = df.copy()
     col_prom = _buscar_columna(salida, "Promotoria")
     col_prima = _buscar_columna(salida, "Prima")
     col_poliza = _buscar_columna(salida, "Póliza")
+    col_cpto = _buscar_columna(salida, "Cpto")
     original_prom = salida[col_prom].copy()
 
     def lookup_dist(valor):
@@ -355,4 +407,13 @@ def construir_pagos_bonos(df, dist_map, pfpm_map):
     salida[col_prima] = original_prom
     salida[col_poliza] = polizas
     salida[col_prom] = polizas.map(lookup_pfpm)
+    salida["Prom_Agte"] = salida[col_cpto].map(
+        lambda valor: _lookup_clasif(valor, clasif_map, "FIGURA")
+    )
+    salida["Ini_Ren"] = salida[col_cpto].map(
+        lambda valor: _lookup_clasif(valor, clasif_map, "INI_REN")
+    )
+    salida["Ramo_clasif"] = salida[col_cpto].map(
+        lambda valor: _lookup_clasif(valor, clasif_map, "RAMO")
+    )
     return salida

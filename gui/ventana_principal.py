@@ -55,12 +55,14 @@ class VentanaPrincipal:
             "dist": None,
             "catalogos": None,
             "bonos": None,
+            "clasif": None,
         }
         self.checks_f2_vida = []
         self.checks_f2_gmm = []
         self.checks_f2_dist = []
         self.checks_f2_catalogos = []
         self.checks_f2_bonos = []
+        self.checks_f2_clasif = []
         self.checks_vida = []
         self.checks_gmm = []
         self.checks_saa = []
@@ -487,6 +489,16 @@ class VentanaPrincipal:
             ayuda="Excel. Encabezados en la fila 2; los datos empiezan en la fila 3.",
         )
         self.frame_f2_bonos_hojas = self._marco_hojas(contenido, "Hojas de Bonos")
+
+        self.entrada_f2_clasif = crear_selector_archivo(
+            contenido,
+            "Catálogo de clasificaciones",
+            lambda: self._seleccionar_archivo_fase2("clasif"),
+            ayuda="Excel con hoja VIDA y hoja GMM. Encabezados: Ramo, Ini_Ren, FIGURA, CATEGORIA, COMPENSACIÓN, CC, NOMBRE.",
+        )
+        self.frame_f2_clasif_hojas = self._marco_hojas(
+            contenido, "Hojas de Catálogo de clasificaciones"
+        )
 
         boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
         boton_frame.pack(pady=(24, 36))
@@ -1179,6 +1191,7 @@ class VentanaPrincipal:
             "dist": self.entrada_f2_dist,
             "catalogos": self.entrada_f2_catalogos,
             "bonos": self.entrada_f2_bonos,
+            "clasif": self.entrada_f2_clasif,
         }
         reemplazar_texto(entradas[clave], archivo)
 
@@ -1188,6 +1201,7 @@ class VentanaPrincipal:
             "dist": ("frame_f2_dist_hojas", "checks_f2_dist"),
             "catalogos": ("frame_f2_catalogos_hojas", "checks_f2_catalogos"),
             "bonos": ("frame_f2_bonos_hojas", "checks_f2_bonos"),
+            "clasif": ("frame_f2_clasif_hojas", "checks_f2_clasif"),
         }
         frame_attr, checks_attr = frames[clave]
         frame = getattr(self, frame_attr)
@@ -1206,6 +1220,7 @@ class VentanaPrincipal:
             "dist": ("frame_f2_dist_hojas", "checks_f2_dist"),
             "catalogos": ("frame_f2_catalogos_hojas", "checks_f2_catalogos"),
             "bonos": ("frame_f2_bonos_hojas", "checks_f2_bonos"),
+            "clasif": ("frame_f2_clasif_hojas", "checks_f2_clasif"),
         }
         frame_attr, checks_attr = pares[clave]
         frame = getattr(self, frame_attr)
@@ -1222,6 +1237,7 @@ class VentanaPrincipal:
             "dist": ("Distribución Comercial", self.checks_f2_dist),
             "catalogos": ("Catálogos", self.checks_f2_catalogos),
             "bonos": ("Bonos", self.checks_f2_bonos),
+            "clasif": ("Catálogo de clasificaciones", self.checks_f2_clasif),
         }
         nombre, checks = nombres[clave]
         archivo = self.archivos_fase2.get(clave)
@@ -1252,6 +1268,8 @@ class VentanaPrincipal:
                 self._hojas_fase2("catalogos"),
                 self.archivos_fase2["bonos"],
                 self._hojas_fase2("bonos"),
+                self.archivos_fase2["clasif"],
+                self._hojas_fase2("clasif"),
                 actualizar_estado=self.actualizar_estado,
             )
             self.actualizar_estado("Fase 2 completada correctamente", 100, "ok")
