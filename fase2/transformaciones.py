@@ -79,18 +79,44 @@ def crear_pfpm_map(df_pfpm):
     return mapa
 
 
+REGIONES_DIST = {"CENTRO", "METRO", "NORTE", "SUR"}
+
+
+def _es_region_dist(valor):
+    texto = _norm_nombre(valor)
+    if texto in REGIONES_DIST:
+        return True
+    partes = (
+        texto.replace(",", " ")
+        .replace("-", " ")
+        .replace("/", " ")
+        .split()
+    )
+    return any(parte in REGIONES_DIST for parte in partes)
+
+
 def crear_dist_map(df_dist):
     if df_dist.shape[1] < 2:
         raise ValueError(
             "Distribución Comercial debe tener al menos dos columnas (A y B)."
         )
-    mapa = {}
-    for original, destino in zip(df_dist.iloc[:, 0], df_dist.iloc[:, 1]):
-        clave = _a_entero(original)
+    tiene_c = df_dist.shape[1] >= 3
+    preferido = {}
+    fallback = {}
+    for indice in range(len(df_dist)):
+        clave = _a_entero(df_dist.iloc[indice, 0])
         if clave is None:
             continue
+        destino = df_dist.iloc[indice, 1]
         valor = _a_entero(destino)
-        mapa[clave] = valor if valor is not None else destino
+        valor = valor if valor is not None else destino
+        if tiene_c and _es_region_dist(df_dist.iloc[indice, 2]):
+            if clave not in preferido:
+                preferido[clave] = valor
+        else:
+            fallback[clave] = valor
+    mapa = dict(fallback)
+    mapa.update(preferido)
     return mapa
 
 
@@ -314,6 +340,7 @@ def _norm_nombre(valor):
         .replace("Í", "I")
         .replace("Ó", "O")
         .replace("Ú", "U")
+        .replace("Ñ", "N")
     )
 
 
@@ -417,3 +444,126 @@ def construir_pagos_bonos(df, dist_map, pfpm_map, clasif_map):
         lambda valor: _lookup_clasif(valor, clasif_map, "RAMO")
     )
     return salida
+
+
+CONCEPTOS_AGENTE = (
+    "Arranque",
+    "Campaña",
+    "Conservación",
+    "Incentivo",
+    "Primer Año",
+)
+CONCEPTOS_AGENTE_CVD = ("Conservación", "Primer Año")
+CONCEPTOS_PROMOTOR = (
+    "Apoyo",
+    "Campaña",
+    "Conservación",
+    "Oficina",
+    "Primer Año",
+)
+ALIAS_INI_REN = {
+    "ARRANQUE": "Arranque",
+    "CAMPANA": "Campaña",
+    "CONSERVACION": "Conservación",
+    "INCENTIVO": "Incentivo",
+    "PRIMER ANO": "Primer Año",
+    "1ER ANO": "Primer Año",
+    "1ER. ANO": "Primer Año",
+    "APOYO": "Apoyo",
+    "OFICINA": "Oficina",
+}
+
+
+def _figura_resumen(valor):
+    texto = _norm_nombre(valor)
+    if "CVD" in texto:
+        return "AGENTE CVD"
+    if texto == "PROMOTOR" or texto.startswith("PROMOTOR"):
+        return "PROMOTOR"
+    if texto == "AGENTE" or texto.startswith("AGENTE"):
+        return "AGENTE"
+    return None
+
+
+def _ini_ren_resumen(valor):
+    texto = _norm_nombre(valor)
+    return ALIAS_INI_REN.get(texto)
+
+
+def _ramo_resumen(valor):
+    entero = _a_entero(valor)
+    if entero == 101:
+        return "VIDA"
+    if entero == 300:
+        return "GMM"
+    texto = _norm_nombre(valor)
+    if "GMM" in texto:
+        return "GMM"
+    if "VIDA" in texto:
+        return "VIDA"
+    return None
+
+
+def _monto_resumen(sumas, figura, concepto, ramo):
+    clave = (figura, concepto, ramo)
+    if clave in sumas.index:
+        return float(sumas.loc[clave])
+    return 0.0
+
+
+def _fila_resumen(etiqueta, vida, gmm, seccion=False):
+    return {
+        "etiqueta": etiqueta,
+        "seccion": seccion,
+        "vida": vida,
+        "gmm": gmm,
+        "total": vida + gmm,
+    }
+
+
+def construir_tabla_principal_bonos(df):
+    col_importe = _buscar_columna(df, "Importe")
+    base = pd.DataFrame(
+        {
+            "FIGURA": df["Prom_Agte"].map(_figura_resumen),
+            "CONCEPTO": df["Ini_Ren"].map(_ini_ren_resumen),
+            "RAMO": df["Ramo_clasif"].map(_ramo_resumen),
+            "IMPORTE": pd.to_numeric(df[col_importe], errors="coerce").fillna(0),
+        }
+    )
+    base = base[
+        base["FIGURA"].notna() & base["CONCEPTO"].notna() & base["RAMO"].notna()
+    ]
+    if base.empty:
+        sumas = pd.Series(dtype=float)
+    else:
+        sumas = base.groupby(
+            ["FIGURA", "CONCEPTO", "RAMO"], dropna=False
+        )["IMPORTE"].sum()
+
+    filas = []
+    bloques = (
+        ("AGENTE", CONCEPTOS_AGENTE),
+        ("AGENTE CVD", CONCEPTOS_AGENTE_CVD),
+        ("PROMOTOR", CONCEPTOS_PROMOTOR),
+    )
+    total_vida = 0.0
+    total_gmm = 0.0
+    for figura, conceptos in bloques:
+        sub_vida = 0.0
+        sub_gmm = 0.0
+        hijas = []
+        for concepto in conceptos:
+            vida = _monto_resumen(sumas, figura, concepto, "VIDA")
+            gmm = _monto_resumen(sumas, figura, concepto, "GMM")
+            sub_vida += vida
+            sub_gmm += gmm
+            hijas.append(_fila_resumen(concepto, vida, gmm))
+        filas.append(_fila_resumen(figura, sub_vida, sub_gmm, seccion=True))
+        filas.extend(hijas)
+        total_vida += sub_vida
+        total_gmm += sub_gmm
+    filas.append(
+        _fila_resumen("Total General", total_vida, total_gmm, seccion=True)
+    )
+    return filas

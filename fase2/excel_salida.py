@@ -4,7 +4,11 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 
 import pandas as pd
 
-from fase2.transformaciones import COLUMNAS_GMM, COLUMNAS_VIDA
+from fase2.transformaciones import (
+    COLUMNAS_GMM,
+    COLUMNAS_VIDA,
+    construir_tabla_principal_bonos,
+)
 
 FUENTE = Font(name="Calibri", size=12)
 FUENTE_TITULO = Font(name="Calibri", size=12, bold=True)
@@ -143,6 +147,27 @@ def _nombre_columna_bonos(nombre):
     return str(nombre)
 
 
+def _escribir_tabla_principal(ws, filas, col_inicio):
+    encabezados = ("", "Vida", "GMM", "TOTAL GENERAL")
+    for indice, valor in enumerate(encabezados):
+        celda = ws.cell(row=1, column=col_inicio + indice, value=valor or None)
+        celda.font = FUENTE_TITULO
+        celda.alignment = CENTRO
+    for offset, fila in enumerate(filas, start=2):
+        etiqueta = ws.cell(
+            row=offset, column=col_inicio, value=fila["etiqueta"]
+        )
+        etiqueta.font = FUENTE_TITULO if fila["seccion"] else FUENTE
+        for extra, campo in enumerate(("vida", "gmm", "total"), start=1):
+            celda = ws.cell(
+                row=offset,
+                column=col_inicio + extra,
+                value=fila[campo],
+            )
+            celda.font = FUENTE_TITULO if fila["seccion"] else FUENTE
+            celda.number_format = FORMATO_MONTO
+
+
 def _escribir_pagos_bonos(wb, df):
     ws = wb.create_sheet("Pagos_de_Bonos")
     for indice, nombre in enumerate(df.columns, start=1):
@@ -157,6 +182,11 @@ def _escribir_pagos_bonos(wb, df):
             celda.font = FUENTE
             if "FECHA" in str(df.columns[indice - 1]).strip().upper():
                 celda.number_format = "dd/mm/yyyy"
+
+    col_resumen = df.shape[1] + 3
+    _escribir_tabla_principal(
+        ws, construir_tabla_principal_bonos(df), col_resumen
+    )
 
 
 def guardar_comision(df_vida, df_gmm, df_bonos, ruta="Comision.xlsx"):
