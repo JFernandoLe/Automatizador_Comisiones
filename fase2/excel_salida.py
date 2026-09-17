@@ -5,8 +5,10 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 import pandas as pd
 
 from fase2.transformaciones import (
+    COLUMNAS_DETALLE,
     COLUMNAS_GMM,
     COLUMNAS_VIDA,
+    construir_tabla_combinaciones_bonos,
     construir_tabla_principal_bonos,
 )
 
@@ -168,6 +170,28 @@ def _escribir_tabla_principal(ws, filas, col_inicio):
             celda.number_format = FORMATO_MONTO
 
 
+SEPARACION_TABLAS = 3
+
+
+def _escribir_tabla_combinaciones(ws, titulo, filas, col_inicio):
+    titulo_celda = ws.cell(row=1, column=col_inicio, value=titulo)
+    titulo_celda.font = FUENTE_TITULO
+    for indice, nombre in enumerate(COLUMNAS_DETALLE):
+        celda = ws.cell(row=2, column=col_inicio + indice, value=nombre)
+        celda.font = FUENTE_TITULO
+        celda.alignment = CENTRO
+    for offset, fila in enumerate(filas, start=3):
+        for indice, nombre in enumerate(COLUMNAS_DETALLE):
+            celda = ws.cell(
+                row=offset,
+                column=col_inicio + indice,
+                value=_valor_celda(fila[nombre]),
+            )
+            celda.font = FUENTE
+            if nombre == "Suma de importe":
+                celda.number_format = FORMATO_MONTO
+
+
 def _escribir_pagos_bonos(wb, df):
     ws = wb.create_sheet("Pagos_de_Bonos")
     for indice, nombre in enumerate(df.columns, start=1):
@@ -186,6 +210,20 @@ def _escribir_pagos_bonos(wb, df):
     col_resumen = df.shape[1] + 3
     _escribir_tabla_principal(
         ws, construir_tabla_principal_bonos(df), col_resumen
+    )
+    col_promotor = col_resumen + 4 + SEPARACION_TABLAS
+    _escribir_tabla_combinaciones(
+        ws,
+        "Promotor",
+        construir_tabla_combinaciones_bonos(df, "PROMOTOR"),
+        col_promotor,
+    )
+    col_agente = col_promotor + len(COLUMNAS_DETALLE) + SEPARACION_TABLAS
+    _escribir_tabla_combinaciones(
+        ws,
+        "Agente",
+        construir_tabla_combinaciones_bonos(df, "AGENTE"),
+        col_agente,
     )
 
 
