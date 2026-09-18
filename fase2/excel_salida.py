@@ -8,7 +8,7 @@ from fase2.transformaciones import (
     COLUMNAS_GMM,
     COLUMNAS_VIDA,
     construir_tabla_principal_bonos,
-    construir_tablas_combinacion_bonos,
+    construir_tablas_seleccionadas_bonos,
 )
 
 FUENTE = Font(name="Calibri", size=12)
@@ -208,7 +208,7 @@ def _escribir_bloque_combinaciones(ws, tablas, col_inicio):
     return columna
 
 
-def _escribir_pagos_bonos(wb, df):
+def _escribir_pagos_bonos(wb, df, combinaciones=None):
     ws = wb.create_sheet("Pagos_de_Bonos")
     for indice, nombre in enumerate(df.columns, start=1):
         celda = ws.cell(row=1, column=indice, value=_nombre_columna_bonos(nombre))
@@ -228,19 +228,22 @@ def _escribir_pagos_bonos(wb, df):
         ws, construir_tabla_principal_bonos(df), col_resumen
     )
     col_promotor = col_resumen + 4 + SEPARACION_TABLAS
-    col_agente = _escribir_bloque_combinaciones(
-        ws,
-        construir_tablas_combinacion_bonos(df, "PROMOTOR"),
-        col_promotor,
-    )
+    seleccion = combinaciones or {}
     _escribir_bloque_combinaciones(
         ws,
-        construir_tablas_combinacion_bonos(df, "AGENTE"),
-        col_agente,
+        construir_tablas_seleccionadas_bonos(
+            df,
+            figuras=seleccion.get("figuras"),
+            ramos=seleccion.get("ramos"),
+            conceptos=seleccion.get("conceptos"),
+        ),
+        col_promotor,
     )
 
 
-def guardar_comision(df_vida, df_gmm, df_bonos, ruta="Comision.xlsx"):
+def guardar_comision(
+    df_vida, df_gmm, df_bonos, ruta="Comision.xlsx", combinaciones=None
+):
     wb = Workbook()
     ws = wb.active
     ws.title = "Comision"
@@ -263,6 +266,6 @@ def guardar_comision(df_vida, df_gmm, df_bonos, ruta="Comision.xlsx"):
     for col, ancho in anchos.items():
         ws.column_dimensions[col].width = ancho
 
-    _escribir_pagos_bonos(wb, df_bonos)
+    _escribir_pagos_bonos(wb, df_bonos, combinaciones=combinaciones)
     wb.save(ruta)
     return ruta

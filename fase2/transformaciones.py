@@ -570,7 +570,16 @@ def construir_tabla_principal_bonos(df):
 
 
 RAMOS2_DETALLE = ("1Vida", "2GMM")
-CONCEPTOS_DETALLE = ("Primer Año", "Conservación", "Campaña")
+FIGURAS_DETALLE = ("PROMOTOR", "AGENTE", "AGENTE CVD")
+CONCEPTOS_DETALLE = (
+    "Primer Año",
+    "Conservación",
+    "Campaña",
+    "Apoyo",
+    "Oficina",
+    "Arranque",
+    "Incentivo",
+)
 
 
 def _ramo2_etiqueta(valor):
@@ -606,14 +615,16 @@ def _ordenar_clave(valor):
     return (1, str(valor))
 
 
-def construir_tablas_combinacion_bonos(df, figura):
+def construir_tablas_combinacion_bonos(df, figura, ramos=None, conceptos=None):
+    ramos = tuple(ramos) if ramos else RAMOS2_DETALLE
+    conceptos = tuple(conceptos) if conceptos else CONCEPTOS_DETALLE
     col_importe = _buscar_columna(df, "Importe")
-    if figura == "AGENTE":
-        col_clave = _buscar_columna(df, "Agente")
-        nombre_clave = "Agente"
-    else:
+    if figura == "PROMOTOR":
         col_clave = _buscar_columna(df, "Promotoria")
         nombre_clave = "Promotoria"
+    else:
+        col_clave = _buscar_columna(df, "Agente")
+        nombre_clave = "Agente"
 
     trabajo = pd.DataFrame(
         {
@@ -624,47 +635,31 @@ def construir_tablas_combinacion_bonos(df, figura):
             "Importe": pd.to_numeric(df[col_importe], errors="coerce").fillna(0),
         }
     )
-    trabajo = trabajo[trabajo["Prom_Agte"] == figura]
-    claves = sorted(
-        {valor for valor in trabajo["Clave"] if valor is not None},
-        key=_ordenar_clave,
-    )
+    trabajo = trabajo[
+        (trabajo["Prom_Agte"] == figura)
+        & trabajo["Ramo2"].isin(ramos)
+        & trabajo["Ini_Ren"].isin(conceptos)
+        & trabajo["Clave"].notna()
+        & (trabajo["Importe"] != 0)
+    ]
     tablas = []
-    if not claves:
-        for ramo in RAMOS2_DETALLE:
-            for concepto in CONCEPTOS_DETALLE:
-                tablas.append(
-                    {
-                        "figura": figura,
-                        "ramo2": ramo,
-                        "ini_ren": concepto,
-                        "nombre_clave": nombre_clave,
-                        "filas": [],
-                    }
-                )
+    if trabajo.empty:
         return tablas
 
-    filtrado = trabajo[
-        trabajo["Ramo2"].isin(RAMOS2_DETALLE)
-        & trabajo["Ini_Ren"].isin(CONCEPTOS_DETALLE)
-        & trabajo["Clave"].notna()
-    ]
-    if filtrado.empty:
-        sumas = pd.Series(dtype=float)
-    else:
-        sumas = filtrado.groupby(
-            ["Ramo2", "Ini_Ren", "Clave"], dropna=False
-        )["Importe"].sum()
+    sumas = trabajo.groupby(
+        ["Ramo2", "Ini_Ren", "Clave"], dropna=False
+    )["Importe"].sum()
 
-    for ramo in RAMOS2_DETALLE:
-        for concepto in CONCEPTOS_DETALLE:
+    for ramo in ramos:
+        for concepto in conceptos:
             filas = []
-            for clave in claves:
-                monto = 0.0
-                indice = (ramo, concepto, clave)
-                if not sumas.empty and indice in sumas.index:
-                    monto = float(sumas.loc[indice])
-                filas.append({"clave": clave, "importe": monto})
+            if not sumas.empty:
+                for clave, monto in sumas.items():
+                    if clave[0] == ramo and clave[1] == concepto and float(monto) != 0:
+                        filas.append({"clave": clave[2], "importe": float(monto)})
+            filas.sort(key=lambda fila: _ordenar_clave(fila["clave"]))
+            if not filas:
+                continue
             tablas.append(
                 {
                     "figura": figura,
@@ -674,4 +669,14 @@ def construir_tablas_combinacion_bonos(df, figura):
                     "filas": filas,
                 }
             )
+    return tablas
+
+
+def construir_tablas_seleccionadas_bonos(df, figuras=None, ramos=None, conceptos=None):
+    figuras = tuple(figuras) if figuras else ("PROMOTOR", "AGENTE")
+    tablas = []
+    for figura in figuras:
+        tablas.extend(
+            construir_tablas_combinacion_bonos(df, figura, ramos, conceptos)
+        )
     return tablas

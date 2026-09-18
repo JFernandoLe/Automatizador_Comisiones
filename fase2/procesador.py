@@ -101,6 +101,7 @@ def generar_comision_fase2(
     hojas_bonos,
     ruta_clasif,
     hojas_clasif,
+    combinaciones=None,
     actualizar_estado=None,
     ruta_salida="Comision.xlsx",
 ):
@@ -125,7 +126,13 @@ def generar_comision_fase2(
     tabla_bonos = construir_pagos_bonos(df_bonos, dist_map, pfpm_map, clasif_map)
 
     _avisar(actualizar_estado, "Generando Comision.xlsx...", 93)
-    ruta = guardar_comision(tabla_vida, tabla_gmm, tabla_bonos, ruta_salida)
+    ruta = guardar_comision(
+        tabla_vida,
+        tabla_gmm,
+        tabla_bonos,
+        ruta_salida,
+        combinaciones=combinaciones,
+    )
     _avisar(actualizar_estado, "Fase 2 generada", 100)
     print(
         f"VIDA filas: {len(tabla_vida):,} | GMM filas: {len(tabla_gmm):,} | "

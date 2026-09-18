@@ -13,6 +13,11 @@ from gui.componentes import (
 )
 from gui.estilos import COLORES, aplicar_estilos
 from fase2.procesador import generar_comision_fase2
+from fase2.transformaciones import (
+    CONCEPTOS_DETALLE,
+    FIGURAS_DETALLE,
+    RAMOS2_DETALLE,
+)
 from procesos.bases_sap import generar_bases_sap
 from procesos.comisiones import generar_comisiones
 from procesos.reporte_final import generar_reporte_final
@@ -63,6 +68,9 @@ class VentanaPrincipal:
         self.checks_f2_catalogos = []
         self.checks_f2_bonos = []
         self.checks_f2_clasif = []
+        self.checks_f2_figuras = []
+        self.checks_f2_ramos = []
+        self.checks_f2_conceptos = []
         self.checks_vida = []
         self.checks_gmm = []
         self.checks_saa = []
@@ -406,6 +414,39 @@ class VentanaPrincipal:
         ).pack(anchor="w", padx=6, pady=4)
         return marco
 
+    def _crear_checks_combinaciones(self, parent):
+        exterior = tk.Frame(parent, bg=COLORES["fondo"])
+        exterior.pack(fill="x", padx=28, pady=(0, 8))
+        grupos = (
+            ("Figura", FIGURAS_DETALLE, "checks_f2_figuras", {"PROMOTOR", "AGENTE"}),
+            ("Ramo", RAMOS2_DETALLE, "checks_f2_ramos", set(RAMOS2_DETALLE)),
+            ("Ini_Ren", CONCEPTOS_DETALLE, "checks_f2_conceptos", set(CONCEPTOS_DETALLE)),
+        )
+        for titulo, valores, attr, activos in grupos:
+            marco = ttk.LabelFrame(exterior, text=titulo, style="Card.TLabelframe")
+            marco.pack(side="left", fill="x", expand=True, padx=(0, 8))
+            checks = []
+            for valor in valores:
+                variable = tk.BooleanVar(value=valor in activos)
+                ttk.Checkbutton(marco, text=valor, variable=variable).pack(
+                    anchor="w", padx=6, pady=2
+                )
+                checks.append((valor, variable))
+            setattr(self, attr, checks)
+
+    def _combinaciones_fase2(self):
+        def seleccion(checks, nombre):
+            valores = [valor for valor, variable in checks if variable.get()]
+            if not valores:
+                raise ValueError(f"Debe seleccionar al menos un valor de {nombre}.")
+            return valores
+
+        return {
+            "figuras": seleccion(self.checks_f2_figuras, "Figura"),
+            "ramos": seleccion(self.checks_f2_ramos, "Ramo"),
+            "conceptos": seleccion(self.checks_f2_conceptos, "Ini_Ren"),
+        }
+
     def _crear_tab_fase2(self):
         contenido = crear_area_desplazable(self.tab_fase2)
 
@@ -499,6 +540,18 @@ class VentanaPrincipal:
         self.frame_f2_clasif_hojas = self._marco_hojas(
             contenido, "Hojas de Catálogo de clasificaciones"
         )
+
+        ttk.Label(
+            contenido,
+            text="Tablas de combinaciones",
+            style="Section.TLabel",
+        ).pack(anchor="w", padx=28, pady=(18, 2))
+        ttk.Label(
+            contenido,
+            text="Marque figura, ramo e Ini_Ren. Se genera una tabla por cada combinación con venta distinta de 0.",
+            style="Hint.TLabel",
+        ).pack(anchor="w", padx=28, pady=(0, 8))
+        self._crear_checks_combinaciones(contenido)
 
         boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
         boton_frame.pack(pady=(24, 36))
@@ -1270,6 +1323,7 @@ class VentanaPrincipal:
                 self._hojas_fase2("bonos"),
                 self.archivos_fase2["clasif"],
                 self._hojas_fase2("clasif"),
+                combinaciones=self._combinaciones_fase2(),
                 actualizar_estado=self.actualizar_estado,
             )
             self.actualizar_estado("Fase 2 completada correctamente", 100, "ok")
