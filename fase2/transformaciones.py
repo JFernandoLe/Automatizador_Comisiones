@@ -1,5 +1,7 @@
 import pandas as pd
 
+VALOR_NA = "N/A"
+
 COL_CLAVE = "CLAVE CON CAMBIO DE PF A PM"
 COL_PROMOTORIA = "PROMOTORIA"
 COL_COMISION = "COMISION"
@@ -65,6 +67,29 @@ def _a_entero(valor):
         return int(float(str(valor).strip()))
     except (TypeError, ValueError):
         return None
+
+
+def _es_vacio(valor):
+    if valor is None:
+        return True
+    try:
+        if pd.isna(valor):
+            return True
+    except (TypeError, ValueError):
+        pass
+    texto = str(valor).strip()
+    return texto == "" or texto.upper() in {"NAN", "NONE", "NAT", "N/A"}
+
+
+def _con_na(valor):
+    return VALOR_NA if _es_vacio(valor) else valor
+
+
+def _con_dimension_na(valores):
+    valores = tuple(valores)
+    if VALOR_NA in valores:
+        return valores
+    return valores + (VALOR_NA,)
 
 
 def crear_pfpm_map(df_pfpm):
@@ -409,39 +434,36 @@ def construir_pagos_bonos(df, dist_map, pfpm_map, clasif_map):
     col_prima = _buscar_columna(salida, "Prima")
     col_poliza = _buscar_columna(salida, "Póliza")
     col_cpto = _buscar_columna(salida, "Cpto")
+    col_agente = _buscar_columna(salida, "Agente")
     original_prom = salida[col_prom].copy()
 
     def lookup_dist(valor):
         clave = _a_entero(valor)
         if clave is None or clave not in dist_map:
-            return None
+            return VALOR_NA
         return dist_map[clave]
 
     def lookup_pfpm(valor):
-        if valor is None:
-            return None
-        try:
-            if pd.isna(valor):
-                return None
-        except (TypeError, ValueError):
-            pass
+        if _es_vacio(valor) or valor == VALOR_NA:
+            return VALOR_NA
         clave = _a_entero(valor)
         if clave is not None and clave in pfpm_map:
             return pfpm_map[clave]
         return valor
 
     polizas = original_prom.map(lookup_dist)
-    salida[col_prima] = original_prom
+    salida[col_prima] = original_prom.map(_con_na)
     salida[col_poliza] = polizas
     salida[col_prom] = polizas.map(lookup_pfpm)
+    salida[col_agente] = salida[col_agente].map(_con_na)
     salida["Prom_Agte"] = salida[col_cpto].map(
-        lambda valor: _lookup_clasif(valor, clasif_map, "FIGURA")
+        lambda valor: _con_na(_lookup_clasif(valor, clasif_map, "FIGURA"))
     )
     salida["Ini_Ren"] = salida[col_cpto].map(
-        lambda valor: _lookup_clasif(valor, clasif_map, "INI_REN")
+        lambda valor: _con_na(_lookup_clasif(valor, clasif_map, "INI_REN"))
     )
     salida["Ramo_clasif"] = salida[col_cpto].map(
-        lambda valor: _lookup_clasif(valor, clasif_map, "RAMO")
+        lambda valor: _con_na(_lookup_clasif(valor, clasif_map, "RAMO"))
     )
     return salida
 
@@ -531,9 +553,9 @@ def construir_tabla_principal_bonos(df):
             "IMPORTE": pd.to_numeric(df[col_importe], errors="coerce").fillna(0),
         }
     )
-    base = base[
-        base["FIGURA"].notna() & base["CONCEPTO"].notna() & base["RAMO"].notna()
-    ]
+    base["FIGURA"] = base["FIGURA"].map(_con_na)
+    base["CONCEPTO"] = base["CONCEPTO"].map(_con_na)
+    base["RAMO"] = base["RAMO"].map(_con_na)
     if base.empty:
         sumas = pd.Series(dtype=float)
     else:
@@ -547,6 +569,12 @@ def construir_tabla_principal_bonos(df):
         ("AGENTE CVD", CONCEPTOS_AGENTE_CVD),
         ("PROMOTOR", CONCEPTOS_PROMOTOR),
     )
+    contadas = {
+        (figura, concepto, ramo)
+        for figura, conceptos in bloques
+        for concepto in conceptos
+        for ramo in ("VIDA", "GMM")
+    }
     total_vida = 0.0
     total_gmm = 0.0
     for figura, conceptos in bloques:
@@ -563,6 +591,20 @@ def construir_tabla_principal_bonos(df):
         filas.extend(hijas)
         total_vida += sub_vida
         total_gmm += sub_gmm
+    na_vida = 0.0
+    na_gmm = 0.0
+    if not sumas.empty:
+        for clave, monto in sumas.items():
+            if clave in contadas:
+                continue
+            if clave[2] == "GMM":
+                na_gmm += float(monto)
+            else:
+                na_vida += float(monto)
+    if na_vida or na_gmm:
+        filas.append(_fila_resumen(VALOR_NA, na_vida, na_gmm, seccion=True))
+        total_vida += na_vida
+        total_gmm += na_gmm
     filas.append(
         _fila_resumen("Total General", total_vida, total_gmm, seccion=True)
     )
@@ -592,20 +634,13 @@ def _ramo2_etiqueta(valor):
 
 
 def _clave_detalle(valor):
-    if valor is None:
-        return None
-    try:
-        if pd.isna(valor):
-            return None
-    except (TypeError, ValueError):
-        pass
+    if _es_vacio(valor):
+        return VALOR_NA
     entero = _a_entero(valor)
     if entero is not None:
         return entero
     texto = str(valor).strip()
-    if not texto or texto.upper() in {"NAN", "NONE", "NAT"}:
-        return None
-    return texto
+    return texto if texto else VALOR_NA
 
 
 def _ordenar_clave(valor):
@@ -619,7 +654,7 @@ def construir_tablas_combinacion_bonos(df, figura, ramos=None, conceptos=None):
     ramos = tuple(ramos) if ramos else RAMOS2_DETALLE
     conceptos = tuple(conceptos) if conceptos else CONCEPTOS_DETALLE
     col_importe = _buscar_columna(df, "Importe")
-    if figura == "PROMOTOR":
+    if figura in {"PROMOTOR", VALOR_NA}:
         col_clave = _buscar_columna(df, "Promotoria")
         nombre_clave = "Promotoria"
     else:
@@ -628,9 +663,9 @@ def construir_tablas_combinacion_bonos(df, figura, ramos=None, conceptos=None):
 
     trabajo = pd.DataFrame(
         {
-            "Prom_Agte": df["Prom_Agte"].map(_figura_resumen),
-            "Ramo2": df["Ramo_clasif"].map(_ramo2_etiqueta),
-            "Ini_Ren": df["Ini_Ren"].map(_ini_ren_resumen),
+            "Prom_Agte": df["Prom_Agte"].map(_figura_resumen).map(_con_na),
+            "Ramo2": df["Ramo_clasif"].map(_ramo2_etiqueta).map(_con_na),
+            "Ini_Ren": df["Ini_Ren"].map(_ini_ren_resumen).map(_con_na),
             "Clave": df[col_clave].map(_clave_detalle),
             "Importe": pd.to_numeric(df[col_importe], errors="coerce").fillna(0),
         }
@@ -639,7 +674,6 @@ def construir_tablas_combinacion_bonos(df, figura, ramos=None, conceptos=None):
         (trabajo["Prom_Agte"] == figura)
         & trabajo["Ramo2"].isin(ramos)
         & trabajo["Ini_Ren"].isin(conceptos)
-        & trabajo["Clave"].notna()
         & (trabajo["Importe"] != 0)
     ]
     tablas = []
@@ -673,7 +707,9 @@ def construir_tablas_combinacion_bonos(df, figura, ramos=None, conceptos=None):
 
 
 def construir_tablas_seleccionadas_bonos(df, figuras=None, ramos=None, conceptos=None):
-    figuras = tuple(figuras) if figuras else ("PROMOTOR", "AGENTE")
+    figuras = _con_dimension_na(figuras or ("PROMOTOR", "AGENTE"))
+    ramos = _con_dimension_na(ramos or RAMOS2_DETALLE)
+    conceptos = _con_dimension_na(conceptos or CONCEPTOS_DETALLE)
     tablas = []
     for figura in figuras:
         tablas.extend(
