@@ -618,9 +618,10 @@ class VentanaPrincipal:
             cuerpo,
             text=(
                 "Seleccione las carpetas Bases de Primas del mes del año actual y "
-                "del año anterior. Solo se leen Excel del primer nivel. Confirme "
-                "los 7 archivos de cada año y la hoja de datos. El resultado se "
-                "guarda como Primas.xlsx, hoja Bases PP. Etapa independiente para pruebas."
+                "del año anterior. Solo se leen Excel (.xlsx, .xls o .xlsb) del "
+                "primer nivel. Confirme los 7 archivos de cada año y la hoja de "
+                "datos. El resultado se guarda como Primas.xlsx, hoja Bases PP. "
+                "Etapa independiente para pruebas."
             ),
             style="Muted.TLabel",
             wraplength=900,
@@ -678,7 +679,7 @@ class VentanaPrincipal:
             parent,
             titulo_selector,
             lambda: self._seleccionar_carpeta_pp(periodo),
-            ayuda="Se ignoran subcarpetas, PDF y cualquier archivo que no sea Excel.",
+            ayuda="Se ignoran subcarpetas, PDF y cualquier archivo que no sea .xlsx, .xls o .xlsb.",
         )
         ttk.Label(
             parent,

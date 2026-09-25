@@ -117,10 +117,10 @@ def listar_excel_primas(carpeta):
 
     if not carpeta:
         raise ValueError("Debe seleccionar la carpeta Bases de Primas del mes.")
-    archivos = listar_excel_en_carpeta(carpeta, incluir_xlsb=False)
+    archivos = listar_excel_en_carpeta(carpeta, incluir_xlsb=True)
     if not archivos:
         raise ValueError(
-            "La carpeta no contiene archivos Excel en el primer nivel."
+            "La carpeta no contiene archivos Excel (.xlsx, .xls o .xlsb) en el primer nivel."
         )
     return archivos
 
