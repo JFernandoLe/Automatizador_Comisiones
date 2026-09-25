@@ -12,6 +12,14 @@ from gui.componentes import (
     reemplazar_texto,
 )
 from gui.estilos import COLORES, aplicar_estilos
+from fase2.bases_pp import (
+    ORDEN_TIPOS_PP,
+    TITULOS_PP,
+    agrupar_excel_pp,
+    extraer_mes_anio,
+    generar_primas,
+    listar_excel_primas,
+)
 from fase2.procesador import generar_comision_fase2
 from fase2.transformaciones import (
     CONCEPTOS_DETALLE,
@@ -71,6 +79,9 @@ class VentanaPrincipal:
         self.checks_f2_figuras = []
         self.checks_f2_ramos = []
         self.checks_f2_conceptos = []
+        self.carpetas_pp = {"actual": None, "anterior": None}
+        self.entradas_pp = {}
+        self.pp_tipos = {"actual": {}, "anterior": {}}
         self.checks_vida = []
         self.checks_gmm = []
         self.checks_saa = []
@@ -151,9 +162,11 @@ class VentanaPrincipal:
 
         self.tab_completo = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_fase2 = ttk.Frame(self.notebook, style="Fondo.TFrame")
+        self.tab_bases_pp = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_acerca = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.notebook.add(self.tab_completo, text="Proceso")
         self.notebook.add(self.tab_fase2, text="Fase 2")
+        self.notebook.add(self.tab_bases_pp, text="Bases PP")
         self.notebook.add(self.tab_acerca, text="Acerca de")
 
         self.tab_bases = ttk.Frame(self.root)
@@ -162,6 +175,7 @@ class VentanaPrincipal:
 
         self._crear_tab_completo()
         self._crear_tab_fase2()
+        self._crear_tab_bases_pp()
         self._crear_tab_acerca()
         self._crear_tab_bases()
         self._crear_tab_comisiones()
@@ -583,6 +597,224 @@ class VentanaPrincipal:
             if str(self.boton_fase2["state"]) == "normal"
             else None,
         )
+
+    def _crear_tab_bases_pp(self):
+        contenido = crear_area_desplazable(self.tab_bases_pp)
+
+        exterior = tk.Frame(contenido, bg=COLORES["fondo"])
+        exterior.pack(fill="x", padx=28, pady=(18, 10))
+        borde = tk.Frame(exterior, bg=COLORES["borde"])
+        borde.pack(fill="x")
+        tarjeta = tk.Frame(borde, bg=COLORES["tarjeta"])
+        tarjeta.pack(fill="x", padx=1, pady=1)
+        acento = tk.Frame(tarjeta, bg=COLORES["primario"], width=4)
+        acento.pack(side="left", fill="y")
+        cuerpo = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
+        cuerpo.pack(fill="x", padx=16, pady=14)
+        ttk.Label(
+            cuerpo, text="Bases PP · Primas ponderadas / pagadas", style="CardTitle.TLabel"
+        ).pack(anchor="w")
+        ttk.Label(
+            cuerpo,
+            text=(
+                "Seleccione las carpetas Bases de Primas del mes del año actual y "
+                "del año anterior. Solo se leen Excel del primer nivel. Confirme "
+                "los 7 archivos de cada año y la hoja de datos. El resultado se "
+                "guarda como Primas.xlsx, hoja Bases PP. Etapa independiente para pruebas."
+            ),
+            style="Muted.TLabel",
+            wraplength=900,
+        ).pack(anchor="w", pady=(4, 0))
+
+        self.entradas_pp["actual"] = self._crear_seccion_pp(
+            contenido,
+            "actual",
+            "Año actual",
+            "Carpeta Bases de Primas del mes (año actual)",
+        )
+        self.entradas_pp["anterior"] = self._crear_seccion_pp(
+            contenido,
+            "anterior",
+            "Año anterior",
+            "Carpeta Bases de Primas del mes (año anterior)",
+        )
+
+        boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
+        boton_frame.pack(pady=(24, 36))
+        self.boton_bases_pp = tk.Button(
+            boton_frame,
+            text="Generar Primas",
+            command=self.ejecutar_bases_pp,
+            bg=COLORES["primario"],
+            fg="#FFFFFF",
+            activebackground=COLORES["primario_hover"],
+            activeforeground="#FFFFFF",
+            font=("Segoe UI Semibold", 12),
+            relief="flat",
+            bd=0,
+            cursor="hand2",
+            padx=32,
+            pady=11,
+        )
+        self.boton_bases_pp.pack()
+        self.boton_bases_pp.bind(
+            "<Enter>",
+            lambda _e: self.boton_bases_pp.config(bg=COLORES["primario_hover"])
+            if str(self.boton_bases_pp["state"]) == "normal"
+            else None,
+        )
+        self.boton_bases_pp.bind(
+            "<Leave>",
+            lambda _e: self.boton_bases_pp.config(bg=COLORES["primario"])
+            if str(self.boton_bases_pp["state"]) == "normal"
+            else None,
+        )
+
+    def _crear_seccion_pp(self, parent, periodo, titulo_seccion, titulo_selector):
+        ttk.Label(parent, text=titulo_seccion, style="Section.TLabel").pack(
+            anchor="w", padx=28, pady=(18, 2)
+        )
+        entrada = crear_selector_archivo(
+            parent,
+            titulo_selector,
+            lambda: self._seleccionar_carpeta_pp(periodo),
+            ayuda="Se ignoran subcarpetas, PDF y cualquier archivo que no sea Excel.",
+        )
+        ttk.Label(
+            parent,
+            text="Marque el archivo de cada tipo y la hoja donde están Promotor, Agente, Prima Pagada y Mes.",
+            style="Hint.TLabel",
+        ).pack(anchor="w", padx=28, pady=(0, 8))
+        for tipo_id in ORDEN_TIPOS_PP:
+            self._crear_fila_tipo_pp(parent, periodo, tipo_id)
+        return entrada
+
+    def _crear_fila_tipo_pp(self, parent, periodo, tipo_id):
+        exterior = tk.Frame(parent, bg=COLORES["fondo"])
+        exterior.pack(fill="x", padx=28, pady=(0, 6))
+        marco = ttk.LabelFrame(
+            exterior, text=TITULOS_PP[tipo_id], style="Card.TLabelframe"
+        )
+        marco.pack(fill="x")
+        activo = tk.BooleanVar(value=False)
+        ttk.Checkbutton(marco, text="Usar este archivo", variable=activo).pack(
+            anchor="w", padx=6, pady=(4, 0)
+        )
+        combo = ttk.Combobox(marco, state="readonly", width=88)
+        combo.pack(fill="x", padx=6, pady=4)
+        combo.bind(
+            "<<ComboboxSelected>>",
+            lambda _e, p=periodo, t=tipo_id: self._cambiar_archivo_pp(p, t),
+        )
+        frame_hojas = tk.Frame(marco, bg=COLORES["tarjeta"])
+        frame_hojas.pack(fill="x", padx=6, pady=(0, 6))
+        ttk.Label(
+            frame_hojas,
+            text="Seleccione una carpeta para listar Excel y hojas.",
+            style="Muted.TLabel",
+        ).pack(anchor="w", padx=4, pady=4)
+        self.pp_tipos[periodo][tipo_id] = {
+            "activo": activo,
+            "combo": combo,
+            "frame_hojas": frame_hojas,
+            "checks": [],
+            "rutas": {},
+        }
+
+    def _seleccionar_carpeta_pp(self, periodo):
+        carpeta = filedialog.askdirectory()
+        if not carpeta:
+            return
+        try:
+            archivos = listar_excel_primas(carpeta)
+        except ValueError as error:
+            messagebox.showerror("Bases PP", str(error))
+            return
+        self.carpetas_pp[periodo] = carpeta
+        reemplazar_texto(self.entradas_pp[periodo], carpeta)
+        self._poblar_tipos_pp(periodo, archivos)
+
+    def _poblar_tipos_pp(self, periodo, archivos):
+        grupos, _sin_tipo = agrupar_excel_pp(archivos)
+        nombres = {Path(archivo).name: archivo for archivo in archivos}
+        valores = list(nombres.keys())
+        for tipo_id in ORDEN_TIPOS_PP:
+            widgets = self.pp_tipos[periodo][tipo_id]
+            widgets["rutas"] = nombres
+            widgets["combo"]["values"] = valores
+            coincidencias = grupos.get(tipo_id) or []
+            if coincidencias:
+                elegido = Path(coincidencias[0]).name
+                widgets["combo"].set(elegido)
+                widgets["activo"].set(True)
+                self._cargar_hojas_pp(periodo, tipo_id)
+            else:
+                widgets["combo"].set("")
+                widgets["activo"].set(False)
+                self._mensaje_hojas(
+                    widgets["frame_hojas"],
+                    "No se detectó este tipo. Elija el Excel si aplica.",
+                )
+                widgets["checks"] = []
+
+    def _cambiar_archivo_pp(self, periodo, tipo_id):
+        widgets = self.pp_tipos[periodo][tipo_id]
+        if widgets["combo"].get():
+            widgets["activo"].set(True)
+            self._cargar_hojas_pp(periodo, tipo_id)
+
+    def _cargar_hojas_pp(self, periodo, tipo_id):
+        widgets = self.pp_tipos[periodo][tipo_id]
+        nombre = widgets["combo"].get()
+        ruta = widgets["rutas"].get(nombre)
+        if not ruta:
+            self._mensaje_hojas(
+                widgets["frame_hojas"], "Seleccione el Excel de este tipo."
+            )
+            widgets["checks"] = []
+            return
+        hojas = obtener_hojas(ruta)
+        if not hojas:
+            self._mensaje_hojas(widgets["frame_hojas"], "El archivo no contiene hojas.")
+            widgets["checks"] = []
+            return
+        widgets["checks"] = llenar_checks(widgets["frame_hojas"], hojas)
+        if len(hojas) > 1:
+            for _hoja, variable in widgets["checks"]:
+                variable.set(False)
+
+    def _entradas_bases_pp(self):
+        entradas = []
+        faltantes = []
+        periodos = (("actual", "Año actual"), ("anterior", "Año anterior"))
+        for periodo, etiqueta in periodos:
+            if not self.carpetas_pp[periodo]:
+                raise ValueError(f"Debe seleccionar la carpeta de {etiqueta}.")
+            for tipo_id in ORDEN_TIPOS_PP:
+                widgets = self.pp_tipos[periodo][tipo_id]
+                titulo = TITULOS_PP[tipo_id]
+                nombre = widgets["combo"].get().strip()
+                ruta = widgets["rutas"].get(nombre) if nombre else None
+                if not widgets["activo"].get() or not ruta:
+                    faltantes.append(f"{etiqueta} · {titulo}")
+                    continue
+                hojas = [hoja for hoja, variable in widgets["checks"] if variable.get()]
+                if not hojas:
+                    raise ValueError(
+                        f"Debe seleccionar la hoja de datos de {etiqueta} · {titulo}."
+                    )
+                mes, anio = extraer_mes_anio(ruta)
+                entradas.append(
+                    {
+                        "tipo_id": tipo_id,
+                        "titulo": titulo,
+                        "anio": anio,
+                        "mes_hasta": mes,
+                        "archivo": ruta,
+                        "hojas": hojas,
+                    }
+                )
+        return entradas, faltantes
 
     def _crear_tab_acerca(self):
         contenido = crear_area_desplazable(self.tab_acerca)
@@ -1072,6 +1304,8 @@ class VentanaPrincipal:
         botones = [self.boton_proceso_completo]
         if getattr(self, "boton_fase2", None) is not None:
             botones.append(self.boton_fase2)
+        if getattr(self, "boton_bases_pp", None) is not None:
+            botones.append(self.boton_bases_pp)
         if ejecutando:
             for boton in botones:
                 boton.config(state="disabled", bg="#9BB8C7", cursor="arrow")
@@ -1332,6 +1566,50 @@ class VentanaPrincipal:
                 lambda: messagebox.showinfo(
                     "CommiFlow",
                     "Fase 2 completada. Se generó Comision.xlsx con la hoja Pagos_de_Bonos.",
+                ),
+            )
+        except Exception as error:
+            self._manejar_error(error)
+        finally:
+            self._progreso_global = False
+            self.root.after(0, lambda: self._set_ejecutando(False))
+
+    def ejecutar_bases_pp(self):
+        try:
+            entradas, faltantes = self._entradas_bases_pp()
+        except ValueError as error:
+            messagebox.showerror("Bases PP", str(error))
+            return
+        if faltantes:
+            listado = "\n".join(f"• {item}" for item in faltantes)
+            continuar = messagebox.askyesno(
+                "Archivos faltantes",
+                f"Faltan {len(faltantes)} archivo(s):\n\n{listado}\n\n"
+                "¿Desea continuar con los archivos disponibles?",
+            )
+            if not continuar:
+                return
+        if not entradas:
+            messagebox.showerror(
+                "Bases PP",
+                "No hay archivos seleccionados para generar Primas.xlsx.",
+            )
+            return
+        self._ejecutar_en_hilo(lambda: self._worker_bases_pp(entradas))
+
+    def _worker_bases_pp(self, entradas):
+        self.root.after(0, lambda: self._set_ejecutando(True))
+        self._progreso_global = True
+        self._progreso_minimo = 0
+        self.actualizar_estado("Iniciando Bases PP...", 0)
+        try:
+            generar_primas(entradas, actualizar_estado=self.actualizar_estado)
+            self.actualizar_estado("Bases PP completada correctamente", 100, "ok")
+            self.root.after(
+                0,
+                lambda: messagebox.showinfo(
+                    "CommiFlow",
+                    "Bases PP completada. Se generó Primas.xlsx con la hoja Bases PP.",
                 ),
             )
         except Exception as error:
