@@ -8,6 +8,7 @@ FUENTE = Font(name="Calibri", size=12)
 FUENTE_TITULO = Font(name="Calibri", size=12, bold=True)
 CENTRO = Alignment(horizontal="center", vertical="center", wrap_text=True)
 FORMATO_MONTO = "#,##0.00"
+SEPARACION_TABLAS = 1
 
 
 def _valor_celda(valor):
@@ -21,62 +22,64 @@ def _valor_celda(valor):
     return valor
 
 
-def _escribir_tabla(ws, tabla, fila_inicio):
-    fila = fila_inicio
-    anio = ws.cell(row=fila, column=1, value=tabla["anio"])
-    titulo = ws.cell(row=fila, column=2, value=tabla["titulo"])
+def _ancho_tabla(tabla):
+    return 4 + tabla["mes_hasta"]
+
+
+def _escribir_tabla(ws, tabla, col_inicio):
+    anio = ws.cell(row=1, column=col_inicio, value=tabla["anio"])
+    titulo = ws.cell(row=1, column=col_inicio + 1, value=tabla["titulo"])
     anio.font = FUENTE_TITULO
     titulo.font = FUENTE_TITULO
-    fila += 1
 
     encabezados = ["Promotor", "Agente"] + list(range(1, tabla["mes_hasta"] + 1))
     encabezados.append("Total general")
-    for indice, valor in enumerate(encabezados, start=2):
-        celda = ws.cell(row=fila, column=indice, value=valor)
+    for indice, valor in enumerate(encabezados):
+        celda = ws.cell(row=2, column=col_inicio + 1 + indice, value=valor)
         celda.font = FUENTE_TITULO
         celda.alignment = CENTRO
-    fila += 1
 
-    for registro in tabla["filas"]:
+    for offset, registro in enumerate(tabla["filas"]):
+        fila = 3 + offset
         ws.cell(
-            row=fila, column=2, value=_valor_celda(registro["promotor"])
+            row=fila,
+            column=col_inicio + 1,
+            value=_valor_celda(registro["promotor"]),
         ).font = FUENTE
         ws.cell(
-            row=fila, column=3, value=_valor_celda(registro["agente"])
+            row=fila,
+            column=col_inicio + 2,
+            value=_valor_celda(registro["agente"]),
         ).font = FUENTE
         for mes in range(1, tabla["mes_hasta"] + 1):
             celda = ws.cell(
                 row=fila,
-                column=3 + mes,
+                column=col_inicio + 2 + mes,
                 value=_valor_celda(registro["meses"].get(mes) or None),
             )
             celda.font = FUENTE
             celda.number_format = FORMATO_MONTO
         total = ws.cell(
             row=fila,
-            column=4 + tabla["mes_hasta"],
+            column=col_inicio + 3 + tabla["mes_hasta"],
             value=_valor_celda(registro["total"]),
         )
         total.font = FUENTE
         total.number_format = FORMATO_MONTO
-        fila += 1
-    return fila + 2
+
+    anchos = [10, 14, 14] + [14] * tabla["mes_hasta"] + [16]
+    for indice, ancho in enumerate(anchos):
+        letra = get_column_letter(col_inicio + indice)
+        ws.column_dimensions[letra].width = ancho
+    return col_inicio + _ancho_tabla(tabla) + SEPARACION_TABLAS
 
 
 def guardar_primas(tablas, ruta="Primas.xlsx"):
     wb = Workbook()
     ws = wb.active
     ws.title = "Bases PP"
-    fila = 1
-    mes_max = 1
+    columna = 1
     for tabla in tablas:
-        mes_max = max(mes_max, tabla["mes_hasta"])
-        fila = _escribir_tabla(ws, tabla, fila)
-
-    ws.column_dimensions["A"].width = 10
-    ws.column_dimensions["B"].width = 14
-    ws.column_dimensions["C"].width = 14
-    for mes in range(1, mes_max + 2):
-        ws.column_dimensions[get_column_letter(3 + mes)].width = 14
+        columna = _escribir_tabla(ws, tabla, columna)
     wb.save(ruta)
     return ruta
