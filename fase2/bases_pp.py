@@ -181,6 +181,78 @@ def _norm_columna(col):
     return re.sub(r"[^A-Z0-9]+", " ", _norm_texto(col)).strip()
 
 
+def _etiquetas_encabezado_pp(valores):
+    encontradas = set()
+    for valor in valores:
+        texto = _norm_columna(valor)
+        if not texto:
+            continue
+        compacto = texto.replace(" ", "")
+        if texto == "PROMOTOR" or texto.startswith("PROMOTOR "):
+            encontradas.add("promotor")
+        if texto == "AGENTE" or texto.startswith("AGENTE "):
+            encontradas.add("agente")
+        if "PRIMA PAGADA" in texto or "PRIMAPAGADA" in compacto or compacto == "PPAGADA":
+            encontradas.add("prima")
+        if texto == "MES" or texto.startswith("MES "):
+            encontradas.add("mes")
+    return encontradas
+
+
+def detectar_fila_encabezado_pp(df, max_filas=40):
+    mejor_fila = 0
+    mejor_puntaje = -1
+    limite = min(len(df), max_filas)
+    for indice in range(limite):
+        encontradas = _etiquetas_encabezado_pp(df.iloc[indice].tolist())
+        puntaje = len(encontradas)
+        if puntaje == 4:
+            return indice
+        if puntaje > mejor_puntaje:
+            mejor_puntaje = puntaje
+            mejor_fila = indice
+        elif puntaje == mejor_puntaje and puntaje >= 2 and indice < mejor_fila:
+            mejor_fila = indice
+    if mejor_puntaje >= 2:
+        return mejor_fila
+    return 0
+
+
+def _nombre_columna_pp(valor, indice):
+    if _es_vacio(valor):
+        return f"Unnamed_{indice}"
+    return str(valor).strip()
+
+
+def aplicar_encabezado_pp(df):
+    if df is None or df.empty:
+        return df
+    fila = detectar_fila_encabezado_pp(df)
+    encabezados = [
+        _nombre_columna_pp(valor, indice)
+        for indice, valor in enumerate(df.iloc[fila].tolist())
+    ]
+    datos = df.iloc[fila + 1 :].copy()
+    datos.columns = encabezados
+    datos = datos.dropna(how="all").reset_index(drop=True)
+    print(f"Encabezados de primas detectados en la fila {fila + 1}")
+    return datos
+
+
+def leer_hojas_primas(archivo, hojas):
+    from servicios.excel import leer_hoja_sin_encabezado
+
+    if not hojas:
+        raise ValueError("Debe seleccionar al menos una hoja.")
+    dataframes = []
+    for hoja in hojas:
+        crudo = leer_hoja_sin_encabezado(archivo, hoja)
+        dataframes.append(aplicar_encabezado_pp(crudo))
+    resultado = pd.concat(dataframes, ignore_index=True)
+    print(f"Total consolidado: {len(resultado):,}")
+    return resultado
+
+
 def _buscar_columna_pp(df, nombres, indice_respaldo, etiqueta):
     objetivos = {_norm_columna(nombre) for nombre in nombres}
     exactas = []
@@ -284,7 +356,6 @@ def _avisar(actualizar_estado, texto, progreso):
 
 def generar_primas(entradas, ruta_salida="Primas.xlsx", actualizar_estado=None):
     from fase2.excel_primas import guardar_primas
-    from servicios.excel import leer_hojas_seleccionadas
 
     if not entradas:
         raise ValueError("No hay archivos de primas seleccionados para generar.")
@@ -297,7 +368,7 @@ def generar_primas(entradas, ruta_salida="Primas.xlsx", actualizar_estado=None):
             f"Leyendo {entrada['titulo']} {entrada['anio']}...",
             progreso,
         )
-        df = leer_hojas_seleccionadas(entrada["archivo"], entrada["hojas"])
+        df = leer_hojas_primas(entrada["archivo"], entrada["hojas"])
         tablas.append(
             construir_tabla_pp(
                 df,

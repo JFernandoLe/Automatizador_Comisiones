@@ -41,6 +41,19 @@ def obtener_hojas_union(archivos):
                 hojas.append(hoja)
     return hojas
 
+def leer_hoja_sin_encabezado(archivo, hoja):
+    print("\n" + "=" * 80)
+    print(f"Leyendo hoja: {hoja}")
+    df = pd.read_excel(
+        archivo,
+        sheet_name=hoja,
+        engine=_engine(archivo),
+        header=None,
+    )
+    print(f"Registros hoja: {len(df):,}")
+    return df
+
+
 def leer_hojas_seleccionadas(archivo, hojas_seleccionadas, header=0):
     if not hojas_seleccionadas:
         raise ValueError("Debe seleccionar al menos una hoja.")
