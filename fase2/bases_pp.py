@@ -224,14 +224,29 @@ def _nombre_columna_pp(valor, indice):
     return str(valor).strip()
 
 
+def _encabezados_unicos(nombres):
+    vistos = {}
+    unicos = []
+    for nombre in nombres:
+        if nombre in vistos:
+            vistos[nombre] += 1
+            unicos.append(f"{nombre}_{vistos[nombre]}")
+        else:
+            vistos[nombre] = 0
+            unicos.append(nombre)
+    return unicos
+
+
 def aplicar_encabezado_pp(df):
     if df is None or df.empty:
         return df
     fila = detectar_fila_encabezado_pp(df)
-    encabezados = [
-        _nombre_columna_pp(valor, indice)
-        for indice, valor in enumerate(df.iloc[fila].tolist())
-    ]
+    encabezados = _encabezados_unicos(
+        [
+            _nombre_columna_pp(valor, indice)
+            for indice, valor in enumerate(df.iloc[fila].tolist())
+        ]
+    )
     datos = df.iloc[fila + 1 :].copy()
     datos.columns = encabezados
     datos = datos.dropna(how="all").reset_index(drop=True)
@@ -257,25 +272,32 @@ def _buscar_columna_pp(df, nombres, indice_respaldo, etiqueta):
     objetivos = {_norm_columna(nombre) for nombre in nombres}
     exactas = []
     parciales = []
-    for col in df.columns:
+    for indice, col in enumerate(df.columns):
         actual = _norm_columna(col)
+        compacto = actual.replace(" ", "")
         if actual in objetivos:
-            exactas.append(col)
-        elif any(
-            objetivo and objetivo in actual
-            for objetivo in objetivos
-            if len(objetivo) >= 4
+            exactas.append(indice)
+            continue
+        if etiqueta == "Prima Pagada" and (
+            "PRIMA PAGADA" in actual
+            or "PRIMAPAGADA" in compacto
+            or compacto == "PPAGADA"
         ):
-            parciales.append(col)
-    if len(exactas) == 1:
-        return exactas[0]
-    if len(exactas) > 1:
+            parciales.append(indice)
+    if exactas:
         return exactas[0]
     if len(parciales) == 1:
         return parciales[0]
     if df.shape[1] > indice_respaldo:
-        return df.columns[indice_respaldo]
+        return indice_respaldo
     raise ValueError(f"No se encontró la columna {etiqueta} en el Excel de primas.")
+
+
+def _serie_columna(df, indice):
+    serie = df.iloc[:, indice]
+    if isinstance(serie, pd.DataFrame):
+        serie = serie.iloc[:, 0]
+    return serie
 
 
 def _columnas_pp(df):
@@ -298,10 +320,12 @@ def construir_tabla_pp(df, mes_hasta, anio, titulo):
     columnas = _columnas_pp(df)
     trabajo = pd.DataFrame(
         {
-            "Promotor": df[columnas["promotor"]].map(_clave_tabla),
-            "Agente": df[columnas["agente"]].map(_clave_tabla),
-            "Mes": df[columnas["mes"]].map(_a_entero),
-            "Prima": pd.to_numeric(df[columnas["prima"]], errors="coerce").fillna(0),
+            "Promotor": _serie_columna(df, columnas["promotor"]).map(_clave_tabla),
+            "Agente": _serie_columna(df, columnas["agente"]).map(_clave_tabla),
+            "Mes": _serie_columna(df, columnas["mes"]).map(_a_entero),
+            "Prima": pd.to_numeric(
+                _serie_columna(df, columnas["prima"]), errors="coerce"
+            ).fillna(0),
         }
     )
     trabajo = trabajo[
