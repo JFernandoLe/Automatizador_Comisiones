@@ -1,7 +1,8 @@
 """
-Adaptación de ProyectoTxtCom para UN solo TXT con delimitador '|'.
+Conversión de TXT SAA con delimitador '|'.
 
-No consolida múltiples archivos. La primera línea es el encabezado.
+Acepta uno o varios archivos. La primera línea de cada archivo es el encabezado;
+los encabezados deben coincidir para poder consolidar.
 """
 import os
 import tempfile
@@ -15,11 +16,14 @@ PREFIJO_HOJAS = "Datos"
 
 
 def convertir_txt_saa(ruta_txt, encoding=ENCODING):
-    """
-    Convierte un TXT SAA a xlsx, igual que ProyectoTxtCom,
-    para que etapa2 lo lea con pd.read_excel como hasta ahora.
-    """
-    archivo = Path(ruta_txt)
+    return convertir_txts_saa([ruta_txt], encoding=encoding)
+
+
+def convertir_txts_saa(rutas, encoding=ENCODING):
+    archivos = [Path(ruta) for ruta in rutas if ruta]
+    if not archivos:
+        raise ValueError("Debe seleccionar al menos un archivo SAA TXT.")
+
     fd, ruta_salida = tempfile.mkstemp(prefix="saa_txt_", suffix=".xlsx")
     os.close(fd)
 
@@ -37,36 +41,50 @@ def convertir_txt_saa(ruta_txt, encoding=ENCODING):
         hoja_actual.append(encabezados)
         filas_en_hoja = 1
 
-    with open(archivo, "r", encoding=encoding) as f:
-        encabezado_archivo = f.readline().strip()
-        if not encabezado_archivo:
-            raise ValueError(f"Archivo vacío: {archivo.name}")
+    for archivo in archivos:
+        with open(archivo, "r", encoding=encoding) as f:
+            encabezado_archivo = f.readline().strip()
+            if not encabezado_archivo:
+                raise ValueError(f"Archivo vacío: {archivo.name}")
 
-        encabezados = encabezado_archivo.split("|")
-        crear_nueva_hoja()
-
-        for linea in f:
-            linea = linea.strip()
-            if not linea:
-                continue
-
-            if filas_en_hoja >= MAX_FILAS_POR_HOJA:
+            columnas = encabezado_archivo.split("|")
+            if encabezados is None:
+                encabezados = columnas
                 crear_nueva_hoja()
-
-            fila = linea.split("|")
-            if len(fila) != len(encabezados):
-                print(
-                    f"Cantidad de columnas incorrecta en {archivo.name}: "
-                    f"{len(fila)} vs {len(encabezados)}"
+            elif columnas != encabezados:
+                raise ValueError(
+                    f"El archivo {archivo.name} tiene encabezados distintos "
+                    "al resto de los TXT SAA y no se puede consolidar."
                 )
-                continue
 
-            hoja_actual.append(fila)
-            filas_en_hoja += 1
-            total_registros += 1
-            if total_registros % 100000 == 0:
-                print(f"{total_registros:,} registros SAA TXT procesados...")
+            for linea in f:
+                linea = linea.strip()
+                if not linea:
+                    continue
+
+                if filas_en_hoja >= MAX_FILAS_POR_HOJA:
+                    crear_nueva_hoja()
+
+                fila = linea.split("|")
+                if len(fila) != len(encabezados):
+                    print(
+                        f"Cantidad de columnas incorrecta en {archivo.name}: "
+                        f"{len(fila)} vs {len(encabezados)}"
+                    )
+                    continue
+
+                hoja_actual.append(fila)
+                filas_en_hoja += 1
+                total_registros += 1
+                if total_registros % 100000 == 0:
+                    print(f"{total_registros:,} registros SAA TXT procesados...")
+
+    if encabezados is None:
+        raise ValueError("Ningún TXT SAA contenía encabezados.")
 
     wb.save(ruta_salida)
-    print(f"SAA TXT convertido: {total_registros:,} registros -> {ruta_salida}")
+    print(
+        f"SAA TXT convertido ({len(archivos)} archivo(s)): "
+        f"{total_registros:,} registros -> {ruta_salida}"
+    )
     return ruta_salida

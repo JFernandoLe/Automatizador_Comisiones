@@ -7,7 +7,7 @@ from conversores.excel_original import (
     convertir_exceles_originales,
     hojas_listas_para_pandas,
 )
-from conversores.saa_txt import convertir_txt_saa
+from conversores.saa_txt import convertir_txts_saa
 from servicios.excel import (
     guardar_dataframe_temporal,
     leer_hojas_seleccionadas,
@@ -29,7 +29,7 @@ def como_lista(archivos):
 
 def es_entrada_txt(archivos):
     lista = como_lista(archivos)
-    return len(lista) == 1 and es_txt(lista[0])
+    return bool(lista) and all(es_txt(archivo) for archivo in lista)
 
 
 def preparar_excel_sap(
@@ -92,20 +92,23 @@ def preparar_saa(archivos, hojas_seleccionadas):
     if not lista:
         raise ValueError("Debe seleccionar el archivo SAA.")
 
-    if es_entrada_txt(lista):
-        return convertir_txt_saa(lista[0])
+    txts = [archivo for archivo in lista if es_txt(archivo)]
+    excels = [archivo for archivo in lista if not es_txt(archivo)]
 
-    if any(es_txt(archivo) for archivo in lista):
-        raise ValueError(
-            "SAA en TXT debe ser un solo archivo. "
-            "No combine TXT con Excel ni seleccione varios TXT."
+    if txts and not excels:
+        return convertir_txts_saa(txts)
+
+    dataframes = []
+    if txts:
+        ruta_txt = convertir_txts_saa(txts)
+        dataframes.append(
+            leer_hojas_seleccionadas(ruta_txt, obtener_hojas(ruta_txt))
         )
 
     if not hojas_seleccionadas:
         raise ValueError("Debe seleccionar al menos una hoja de SAA.")
 
-    dataframes = []
-    for archivo in lista:
+    for archivo in excels:
         hojas_archivo = [
             hoja for hoja in hojas_seleccionadas if hoja in obtener_hojas(archivo)
         ]

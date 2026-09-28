@@ -15,6 +15,21 @@ def _engine(archivo):
 def obtener_hojas(archivo):
     return list(CalamineWorkbook.from_path(str(archivo)).sheet_names)
 
+def listar_txt_en_carpeta(carpeta):
+    raiz = Path(carpeta)
+    return [
+        str(archivo.resolve())
+        for archivo in sorted(raiz.glob("*.txt"))
+        if not archivo.name.startswith("~$")
+    ]
+
+
+def listar_archivos_saa(carpeta):
+    archivos = listar_excel_en_carpeta(carpeta, incluir_xlsb=False)
+    archivos.extend(listar_txt_en_carpeta(carpeta))
+    return sorted(archivos, key=lambda ruta: Path(ruta).name.lower())
+
+
 def listar_excel_en_carpeta(carpeta, incluir_xlsb=False):
     raiz = Path(carpeta)
     patrones = ["*.xls", "*.xlsx"]

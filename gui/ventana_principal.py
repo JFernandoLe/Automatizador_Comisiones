@@ -29,7 +29,12 @@ from fase2.transformaciones import (
 from procesos.bases_sap import generar_bases_sap
 from procesos.comisiones import generar_comisiones
 from procesos.reporte_final import generar_reporte_final
-from servicios.excel import listar_excel_en_carpeta, obtener_hojas, obtener_hojas_union
+from servicios.excel import (
+    listar_archivos_saa,
+    listar_excel_en_carpeta,
+    obtener_hojas,
+    obtener_hojas_union,
+)
 from servicios.recursos import ruta_icono, ruta_logo
 
 TIPOS_EXCEL = [("Excel", "*.xlsx *.xls")]
@@ -281,7 +286,7 @@ class VentanaPrincipal:
             "Archivo SAA",
             lambda: self._seleccionar_archivos("saa"),
             lambda: self._seleccionar_carpeta("saa"),
-            ayuda="Un archivo TXT, o uno o varios Excel.",
+            ayuda="Uno o varios TXT o Excel, o una carpeta.",
         )
         self.frame_pc_saa_hojas = self._marco_hojas(contenido, "Hojas de SAA")
 
@@ -396,7 +401,7 @@ class VentanaPrincipal:
             ),
             (
                 "2. Selecciona las hojas correspondientes",
-                "Si un Excel tiene varias hojas, marque cuáles desea procesar. En carpeta o varios archivos de VIDA, GMM o Acumulado se consolidan todas las hojas de cada archivo. El SAA en TXT no requiere selección de hojas.",
+                "Si un Excel tiene varias hojas, marque cuáles desea procesar. En carpeta o varios archivos de VIDA, GMM o Acumulado se consolidan todas las hojas de cada archivo. El SAA admite uno o varios TXT y/o Excel: los TXT se consolidan y no requieren hojas; si hay Excel, marque las hojas de esos Excel.",
             ),
             (
                 "3. Ejecuta CommiFlow",
@@ -1031,7 +1036,7 @@ class VentanaPrincipal:
 
         self.entrada_saa = crear_selector_multiples(
             self.tab_comisiones,
-            "Archivo SAA (un TXT, o varios Excel)",
+            "Archivo SAA (uno o varios TXT o Excel)",
             lambda: self._seleccionar_archivos("saa"),
             lambda: self._seleccionar_carpeta("saa"),
         )
@@ -1159,6 +1164,16 @@ class VentanaPrincipal:
         carpeta = filedialog.askdirectory()
         if not carpeta:
             return
+        if clave == "saa":
+            archivos = listar_archivos_saa(carpeta)
+            if not archivos:
+                messagebox.showerror(
+                    "Sin archivos",
+                    "La carpeta no contiene TXT ni Excel .xls o .xlsx.",
+                )
+                return
+            self._asignar_archivos(clave, archivos)
+            return
         archivos = listar_excel_en_carpeta(
             carpeta, incluir_xlsb=(clave == "manuales")
         )
@@ -1173,22 +1188,6 @@ class VentanaPrincipal:
         self._asignar_archivos(clave, archivos)
 
     def _asignar_archivos(self, clave, archivos):
-        if clave == "saa":
-            txts = [a for a in archivos if a.lower().endswith(".txt")]
-            excels = [a for a in archivos if not a.lower().endswith(".txt")]
-            if txts and excels:
-                messagebox.showerror(
-                    "SAA",
-                    "No combine TXT con Excel. Use un solo TXT, o uno/varios Excel.",
-                )
-                return
-            if len(txts) > 1:
-                messagebox.showerror(
-                    "SAA",
-                    "SAA en TXT debe ser un solo archivo.",
-                )
-                return
-
         self.archivos[clave] = archivos if clave in CLAVES_MULTIPLES else archivos[0]
         texto = self._texto_seleccion(archivos)
         entradas = {
@@ -1205,7 +1204,9 @@ class VentanaPrincipal:
 
         if clave == "saa" and es_entrada_txt(archivos):
             self._actualizar_hojas(
-                clave, [], mensaje="No aplica selección de hojas para archivo TXT."
+                clave,
+                [],
+                mensaje="No aplica selección de hojas para archivo(s) TXT. Se consolidan todos.",
             )
             return
 
