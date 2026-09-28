@@ -82,6 +82,10 @@ class VentanaPrincipal:
         self.carpetas_pp = {"actual": None, "anterior": None}
         self.entradas_pp = {}
         self.pp_tipos = {"actual": {}, "anterior": {}}
+        self.pp_rutas = {"actual": {}, "anterior": {}}
+        self.pp_extras_ids = {"actual": [], "anterior": []}
+        self.pp_extra_seq = {"actual": 0, "anterior": 0}
+        self.pp_frames_extras = {}
         self.checks_vida = []
         self.checks_gmm = []
         self.checks_saa = []
@@ -165,7 +169,7 @@ class VentanaPrincipal:
         self.tab_bases_pp = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_acerca = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.notebook.add(self.tab_completo, text="Proceso")
-        self.notebook.add(self.tab_fase2, text="Fase 2")
+        self.notebook.add(self.tab_fase2, text="Comisiones y Bonos")
         self.notebook.add(self.tab_bases_pp, text="Bases PP")
         self.notebook.add(self.tab_acerca, text="Acerca de")
 
@@ -475,7 +479,7 @@ class VentanaPrincipal:
         cuerpo = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
         cuerpo.pack(fill="x", padx=16, pady=14)
         ttk.Label(
-            cuerpo, text="Fase 2 · Comisión", style="CardTitle.TLabel"
+            cuerpo, text="Comisiones y Bonos", style="CardTitle.TLabel"
         ).pack(anchor="w")
         ttk.Label(
             cuerpo,
@@ -619,8 +623,9 @@ class VentanaPrincipal:
             text=(
                 "Seleccione las carpetas Bases de Primas del mes del año actual y "
                 "del año anterior. Solo se leen Excel (.xlsx, .xls o .xlsb) del "
-                "primer nivel. Confirme los 7 archivos de cada año y la hoja de "
-                "datos. El resultado se guarda como Primas.xlsx, hoja Bases PP. "
+                "primer nivel. Confirme los archivos de cada año (los 7 tipos "
+                "conocidos y, si aplica, bases adicionales) y la hoja de datos. "
+                "El resultado se guarda como Primas.xlsx, hoja Bases PP. "
                 "Etapa independiente para pruebas."
             ),
             style="Muted.TLabel",
@@ -683,20 +688,37 @@ class VentanaPrincipal:
         )
         ttk.Label(
             parent,
-            text="Marque el archivo de cada tipo y la hoja donde están Promotor, Agente, Prima Pagada y Mes.",
+            text="Marque el archivo de cada tipo y la hoja donde están Promotor, Agente, Prima Pagada y Mes. Use Agregar más si hay bases extra.",
             style="Hint.TLabel",
         ).pack(anchor="w", padx=28, pady=(0, 8))
         for tipo_id in ORDEN_TIPOS_PP:
             self._crear_fila_tipo_pp(parent, periodo, tipo_id)
+        extras = tk.Frame(parent, bg=COLORES["fondo"])
+        extras.pack(fill="x")
+        self.pp_frames_extras[periodo] = extras
+        boton_extra = tk.Frame(parent, bg=COLORES["fondo"])
+        boton_extra.pack(fill="x", padx=28, pady=(0, 8))
+        ttk.Button(
+            boton_extra,
+            text="Agregar más",
+            command=lambda p=periodo: self._agregar_extra_pp(p),
+        ).pack(anchor="w")
         return entrada
 
-    def _crear_fila_tipo_pp(self, parent, periodo, tipo_id):
+    def _crear_fila_tipo_pp(self, parent, periodo, tipo_id, extra=False, titulo=None):
+        titulo = titulo or TITULOS_PP.get(tipo_id, "Base adicional")
         exterior = tk.Frame(parent, bg=COLORES["fondo"])
         exterior.pack(fill="x", padx=28, pady=(0, 6))
-        marco = ttk.LabelFrame(
-            exterior, text=TITULOS_PP[tipo_id], style="Card.TLabelframe"
-        )
+        marco = ttk.LabelFrame(exterior, text=titulo, style="Card.TLabelframe")
         marco.pack(fill="x")
+        titulo_var = tk.StringVar(value=titulo)
+        if extra:
+            fila_titulo = tk.Frame(marco, bg=COLORES["tarjeta"])
+            fila_titulo.pack(fill="x", padx=6, pady=(6, 0))
+            ttk.Label(fila_titulo, text="Nombre de la tabla").pack(side="left")
+            ttk.Entry(fila_titulo, textvariable=titulo_var, width=40).pack(
+                side="left", padx=(8, 0), fill="x", expand=True
+            )
         activo = tk.BooleanVar(value=False)
         ttk.Checkbutton(marco, text="Usar este archivo", variable=activo).pack(
             anchor="w", padx=6, pady=(4, 0)
@@ -714,13 +736,49 @@ class VentanaPrincipal:
             text="Seleccione una carpeta para listar Excel y hojas.",
             style="Muted.TLabel",
         ).pack(anchor="w", padx=4, pady=4)
-        self.pp_tipos[periodo][tipo_id] = {
+        if extra:
+            ttk.Button(
+                marco,
+                text="Quitar",
+                command=lambda p=periodo, t=tipo_id: self._quitar_extra_pp(p, t),
+            ).pack(anchor="e", padx=6, pady=(0, 6))
+        widgets = {
             "activo": activo,
             "combo": combo,
             "frame_hojas": frame_hojas,
             "checks": [],
-            "rutas": {},
+            "rutas": self.pp_rutas.get(periodo) or {},
+            "extra": extra,
+            "titulo_var": titulo_var,
+            "exterior": exterior,
         }
+        self.pp_tipos[periodo][tipo_id] = widgets
+        if widgets["rutas"]:
+            combo["values"] = list(widgets["rutas"].keys())
+        return widgets
+
+    def _agregar_extra_pp(self, periodo):
+        self.pp_extra_seq[periodo] += 1
+        numero = self.pp_extra_seq[periodo]
+        tipo_id = f"extra_{numero}"
+        titulo = f"Base adicional {numero}"
+        self._crear_fila_tipo_pp(
+            self.pp_frames_extras[periodo],
+            periodo,
+            tipo_id,
+            extra=True,
+            titulo=titulo,
+        )
+        self.pp_extras_ids[periodo].append(tipo_id)
+
+    def _quitar_extra_pp(self, periodo, tipo_id):
+        widgets = self.pp_tipos[periodo].get(tipo_id)
+        if not widgets:
+            return
+        widgets["exterior"].destroy()
+        del self.pp_tipos[periodo][tipo_id]
+        if tipo_id in self.pp_extras_ids[periodo]:
+            self.pp_extras_ids[periodo].remove(tipo_id)
 
     def _seleccionar_carpeta_pp(self, periodo):
         carpeta = filedialog.askdirectory()
@@ -738,11 +796,24 @@ class VentanaPrincipal:
     def _poblar_tipos_pp(self, periodo, archivos):
         grupos, _sin_tipo = agrupar_excel_pp(archivos)
         nombres = {Path(archivo).name: archivo for archivo in archivos}
+        self.pp_rutas[periodo] = nombres
         valores = list(nombres.keys())
-        for tipo_id in ORDEN_TIPOS_PP:
-            widgets = self.pp_tipos[periodo][tipo_id]
+        for tipo_id, widgets in self.pp_tipos[periodo].items():
             widgets["rutas"] = nombres
             widgets["combo"]["values"] = valores
+            if widgets.get("extra"):
+                elegido = widgets["combo"].get()
+                if elegido in nombres:
+                    self._cargar_hojas_pp(periodo, tipo_id)
+                else:
+                    widgets["combo"].set("")
+                    widgets["activo"].set(False)
+                    self._mensaje_hojas(
+                        widgets["frame_hojas"],
+                        "Elija el Excel de esta base adicional.",
+                    )
+                    widgets["checks"] = []
+                continue
             coincidencias = grupos.get(tipo_id) or []
             if coincidencias:
                 elegido = Path(coincidencias[0]).name
@@ -791,13 +862,17 @@ class VentanaPrincipal:
         for periodo, etiqueta in periodos:
             if not self.carpetas_pp[periodo]:
                 raise ValueError(f"Debe seleccionar la carpeta de {etiqueta}.")
-            for tipo_id in ORDEN_TIPOS_PP:
+            for tipo_id in list(ORDEN_TIPOS_PP) + self.pp_extras_ids[periodo]:
                 widgets = self.pp_tipos[periodo][tipo_id]
-                titulo = TITULOS_PP[tipo_id]
+                titulo = widgets["titulo_var"].get().strip() or TITULOS_PP.get(
+                    tipo_id, "Base adicional"
+                )
                 nombre = widgets["combo"].get().strip()
                 ruta = widgets["rutas"].get(nombre) if nombre else None
+                extra = widgets.get("extra")
                 if not widgets["activo"].get() or not ruta:
-                    faltantes.append(f"{etiqueta} · {titulo}")
+                    if not extra:
+                        faltantes.append(f"{etiqueta} · {titulo}")
                     continue
                 hojas = [hoja for hoja, variable in widgets["checks"] if variable.get()]
                 if not hojas:
