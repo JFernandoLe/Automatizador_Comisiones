@@ -1,3 +1,4 @@
+from datetime import datetime
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -20,7 +21,12 @@ from fase2.bases_pp import (
     generar_primas,
     listar_excel_primas,
 )
-from fase2.procesador import generar_comision_fase2
+from anp.base_anp import (
+    MESES,
+    MESES_INV,
+    generar_base_anp,
+    listar_excel_anp,
+)
 from fase2.transformaciones import (
     CONCEPTOS_DETALLE,
     FIGURAS_DETALLE,
@@ -91,6 +97,12 @@ class VentanaPrincipal:
         self.pp_extras_ids = {"actual": [], "anterior": []}
         self.pp_extra_seq = {"actual": 0, "anterior": 0}
         self.pp_frames_extras = {}
+        self.archivos_anp = []
+        self.carpeta_salida_anp = None
+        self.checks_anp = []
+        self.incluir_subcarpetas_anp = tk.BooleanVar(value=True)
+        self.anio_anp = tk.StringVar(value=str(datetime.now().year))
+        self.mes_anp = tk.StringVar(value=MESES_INV[datetime.now().month])
         self.checks_vida = []
         self.checks_gmm = []
         self.checks_saa = []
@@ -172,10 +184,12 @@ class VentanaPrincipal:
         self.tab_completo = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_fase2 = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_bases_pp = ttk.Frame(self.notebook, style="Fondo.TFrame")
+        self.tab_base_anp = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_acerca = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.notebook.add(self.tab_completo, text="Proceso")
         self.notebook.add(self.tab_fase2, text="Comisiones y Bonos")
         self.notebook.add(self.tab_bases_pp, text="Bases PP")
+        self.notebook.add(self.tab_base_anp, text="Base ANP")
         self.notebook.add(self.tab_acerca, text="Acerca de")
 
         self.tab_bases = ttk.Frame(self.root)
@@ -185,6 +199,7 @@ class VentanaPrincipal:
         self._crear_tab_completo()
         self._crear_tab_fase2()
         self._crear_tab_bases_pp()
+        self._crear_tab_base_anp()
         self._crear_tab_acerca()
         self._crear_tab_bases()
         self._crear_tab_comisiones()
@@ -897,6 +912,180 @@ class VentanaPrincipal:
                 )
         return entradas, faltantes
 
+    def _crear_tab_base_anp(self):
+        contenido = crear_area_desplazable(self.tab_base_anp)
+
+        exterior = tk.Frame(contenido, bg=COLORES["fondo"])
+        exterior.pack(fill="x", padx=28, pady=(18, 10))
+        borde = tk.Frame(exterior, bg=COLORES["borde"])
+        borde.pack(fill="x")
+        tarjeta = tk.Frame(borde, bg=COLORES["tarjeta"])
+        tarjeta.pack(fill="x", padx=1, pady=1)
+        acento = tk.Frame(tarjeta, bg=COLORES["primario"], width=4)
+        acento.pack(side="left", fill="y")
+        cuerpo = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
+        cuerpo.pack(fill="x", padx=16, pady=14)
+        ttk.Label(
+            cuerpo, text="Base ANP · Detalle pagado", style="CardTitle.TLabel"
+        ).pack(anchor="w")
+        ttk.Label(
+            cuerpo,
+            text=(
+                "Etapa final independiente. Lee Excel de Detalle pagado, ajusta "
+                "la fecha de pago al mes del archivo y genera CSV individuales "
+                "más Bases ANP.csv. Si el nombre no trae periodo, se usa "
+                "el mes y año de respaldo de esta pantalla."
+            ),
+            style="Muted.TLabel",
+            wraplength=900,
+        ).pack(anchor="w", pady=(4, 0))
+
+        ttk.Label(contenido, text="Archivos de entrada", style="Section.TLabel").pack(
+            anchor="w", padx=28, pady=(8, 2)
+        )
+        self.entrada_anp = crear_selector_multiples(
+            contenido,
+            "Excel de Detalle pagado",
+            lambda: self._seleccionar_archivos_anp(),
+            lambda: self._seleccionar_carpeta_anp(),
+            ayuda="Uno o varios Excel (.xlsx, .xls, .xlsm o .xlsb), o una carpeta.",
+        )
+        ttk.Checkbutton(
+            contenido,
+            text="Incluir subcarpetas",
+            variable=self.incluir_subcarpetas_anp,
+        ).pack(anchor="w", padx=32, pady=(0, 8))
+        self.frame_anp_hojas = self._marco_hojas(
+            contenido, "Hojas (si no existe 'Detalle pagado')"
+        )
+
+        ttk.Label(contenido, text="Periodo de respaldo", style="Section.TLabel").pack(
+            anchor="w", padx=28, pady=(12, 2)
+        )
+        ttk.Label(
+            contenido,
+            text="Solo se usa cuando el nombre del archivo no trae mes y año.",
+            style="Hint.TLabel",
+        ).pack(anchor="w", padx=28, pady=(0, 8))
+        periodo = tk.Frame(contenido, bg=COLORES["fondo"])
+        periodo.pack(fill="x", padx=28, pady=(0, 8))
+        ttk.Label(periodo, text="Mes").pack(side="left")
+        ttk.Combobox(
+            periodo,
+            textvariable=self.mes_anp,
+            values=[MESES_INV[n] for n in range(1, 13)],
+            state="readonly",
+            width=16,
+        ).pack(side="left", padx=(8, 18))
+        ttk.Label(periodo, text="Año").pack(side="left")
+        ttk.Entry(periodo, textvariable=self.anio_anp, width=10).pack(
+            side="left", padx=(8, 0)
+        )
+
+        ttk.Label(contenido, text="Salida", style="Section.TLabel").pack(
+            anchor="w", padx=28, pady=(12, 2)
+        )
+        self.entrada_salida_anp = crear_selector_archivo(
+            contenido,
+            "Carpeta de salida",
+            self._seleccionar_salida_anp,
+            ayuda="Ahí se guardan CSV_Individuales, Bases ANP.csv y LOG_ERRORES.xlsx.",
+        )
+
+        boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
+        boton_frame.pack(pady=(24, 36))
+        self.boton_anp = tk.Button(
+            boton_frame,
+            text="Generar Base ANP",
+            command=self.ejecutar_base_anp,
+            bg=COLORES["primario"],
+            fg="#FFFFFF",
+            activebackground=COLORES["primario_hover"],
+            activeforeground="#FFFFFF",
+            font=("Segoe UI Semibold", 12),
+            relief="flat",
+            bd=0,
+            cursor="hand2",
+            padx=32,
+            pady=11,
+        )
+        self.boton_anp.pack()
+        self.boton_anp.bind(
+            "<Enter>",
+            lambda _e: self.boton_anp.config(bg=COLORES["primario_hover"])
+            if str(self.boton_anp["state"]) == "normal"
+            else None,
+        )
+        self.boton_anp.bind(
+            "<Leave>",
+            lambda _e: self.boton_anp.config(bg=COLORES["primario"])
+            if str(self.boton_anp["state"]) == "normal"
+            else None,
+        )
+
+    def _seleccionar_archivos_anp(self):
+        seleccion = filedialog.askopenfilenames(
+            filetypes=[
+                ("Excel", "*.xlsx *.xls *.xlsm *.xlsb"),
+                ("Excel binario", "*.xlsb"),
+            ]
+        )
+        if not seleccion:
+            return
+        self._asignar_archivos_anp(list(seleccion))
+
+    def _seleccionar_carpeta_anp(self):
+        carpeta = filedialog.askdirectory()
+        if not carpeta:
+            return
+        archivos = listar_excel_anp(
+            [carpeta], incluir_subcarpetas=self.incluir_subcarpetas_anp.get()
+        )
+        if not archivos:
+            messagebox.showerror(
+                "Base ANP",
+                "La carpeta no contiene Excel .xlsx, .xls, .xlsm o .xlsb.",
+            )
+            return
+        self._asignar_archivos_anp(archivos)
+
+    def _asignar_archivos_anp(self, archivos):
+        self.archivos_anp = archivos
+        reemplazar_texto(self.entrada_anp, self._texto_seleccion(archivos))
+        if len(archivos) == 1:
+            hojas = obtener_hojas(archivos[0])
+        else:
+            hojas = obtener_hojas_union(archivos)
+        if not hojas:
+            self._mensaje_hojas(self.frame_anp_hojas, "Los archivos no contienen hojas.")
+            self.checks_anp = []
+            return
+        self.checks_anp = llenar_checks(self.frame_anp_hojas, hojas)
+        hay_detalle = False
+        for hoja, variable in self.checks_anp:
+            es_detalle = hoja.strip().lower() == "detalle pagado"
+            variable.set(es_detalle)
+            hay_detalle = hay_detalle or es_detalle
+        if not hay_detalle and len(self.checks_anp) == 1:
+            self.checks_anp[0][1].set(True)
+
+    def _seleccionar_salida_anp(self):
+        carpeta = filedialog.askdirectory(title="Carpeta de salida")
+        if not carpeta:
+            return
+        self.carpeta_salida_anp = carpeta
+        reemplazar_texto(self.entrada_salida_anp, carpeta)
+
+    def _periodo_respaldo_anp(self):
+        try:
+            anio = int(str(self.anio_anp.get()).strip())
+        except (TypeError, ValueError):
+            raise ValueError("El año de respaldo no es válido.")
+        mes = MESES.get(str(self.mes_anp.get()).strip().lower())
+        if mes is None:
+            raise ValueError("Debe seleccionar el mes de respaldo.")
+        return anio, mes
+
     def _crear_tab_acerca(self):
         contenido = crear_area_desplazable(self.tab_acerca)
         contenedor = tk.Frame(contenido, bg=COLORES["fondo"])
@@ -1383,6 +1572,8 @@ class VentanaPrincipal:
             botones.append(self.boton_fase2)
         if getattr(self, "boton_bases_pp", None) is not None:
             botones.append(self.boton_bases_pp)
+        if getattr(self, "boton_anp", None) is not None:
+            botones.append(self.boton_anp)
         if ejecutando:
             for boton in botones:
                 boton.config(state="disabled", bg="#9BB8C7", cursor="arrow")
@@ -1687,6 +1878,56 @@ class VentanaPrincipal:
                 lambda: messagebox.showinfo(
                     "CommiFlow",
                     "Bases PP completada. Se generó Primas.xlsx con la hoja Bases PP.",
+                ),
+            )
+        except Exception as error:
+            self._manejar_error(error)
+        finally:
+            self._progreso_global = False
+            self.root.after(0, lambda: self._set_ejecutando(False))
+
+    def ejecutar_base_anp(self):
+        try:
+            if not self.archivos_anp:
+                raise ValueError("Debe seleccionar uno o más Excel de Detalle pagado.")
+            if not self.carpeta_salida_anp:
+                raise ValueError("Debe seleccionar la carpeta de salida.")
+            anio, mes = self._periodo_respaldo_anp()
+        except ValueError as error:
+            messagebox.showerror("Base ANP", str(error))
+            return
+        hojas = [hoja for hoja, variable in self.checks_anp if variable.get()]
+        self._ejecutar_en_hilo(
+            lambda: self._worker_base_anp(list(self.archivos_anp), anio, mes, hojas)
+        )
+
+    def _worker_base_anp(self, archivos, anio, mes, hojas):
+        self.root.after(0, lambda: self._set_ejecutando(True))
+        self._progreso_global = True
+        self._progreso_minimo = 0
+        self.actualizar_estado("Iniciando Base ANP...", 0)
+        try:
+            resultado = generar_base_anp(
+                archivos,
+                self.carpeta_salida_anp,
+                anio_respaldo=anio,
+                mes_respaldo=mes,
+                hojas=hojas or None,
+                actualizar_estado=self.actualizar_estado,
+            )
+            self.actualizar_estado("Base ANP completada correctamente", 100, "ok")
+            extra = ""
+            if resultado["errores"]:
+                extra = (
+                    f"\nArchivos con error: {resultado['errores']}. "
+                    "Revise LOG_ERRORES.xlsx."
+                )
+            self.root.after(
+                0,
+                lambda: messagebox.showinfo(
+                    "CommiFlow",
+                    f"Base ANP generada. Procesados: {resultado['procesados']}."
+                    f"{extra}\n\n{resultado['acumulado']}",
                 ),
             )
         except Exception as error:
