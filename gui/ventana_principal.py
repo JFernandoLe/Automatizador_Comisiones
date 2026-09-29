@@ -24,6 +24,7 @@ from fase2.bases_pp import (
 from anp.base_anp import (
     MESES,
     MESES_INV,
+    detectar_periodo_archivo,
     generar_base_anp,
     listar_excel_anp,
 )
@@ -101,8 +102,10 @@ class VentanaPrincipal:
         self.carpeta_salida_anp = None
         self.checks_anp = []
         self.incluir_subcarpetas_anp = tk.BooleanVar(value=True)
-        self.anio_anp = tk.StringVar(value=str(datetime.now().year))
-        self.mes_anp = tk.StringVar(value=MESES_INV[datetime.now().month])
+        self._ultimo_periodo_anp = (
+            datetime.now().year,
+            datetime.now().month,
+        )
         self.checks_vida = []
         self.checks_gmm = []
         self.checks_saa = []
@@ -932,9 +935,10 @@ class VentanaPrincipal:
             cuerpo,
             text=(
                 "Etapa final independiente. Lee Excel de Detalle pagado, ajusta "
-                "la fecha de pago al mes del archivo y genera CSV individuales "
-                "más Bases ANP.csv. Si el nombre no trae periodo, se usa "
-                "el mes y año de respaldo de esta pantalla."
+                "la fecha de pago al mes de cada archivo y genera CSV individuales "
+                "más Bases ANP.csv. Una carpeta puede traer varios meses: el mes "
+                "se toma del nombre de cada Excel. Si no se detecta, se pregunta "
+                "mes y año de ese archivo."
             ),
             style="Muted.TLabel",
             wraplength=900,
@@ -957,29 +961,6 @@ class VentanaPrincipal:
         ).pack(anchor="w", padx=32, pady=(0, 8))
         self.frame_anp_hojas = self._marco_hojas(
             contenido, "Hojas (si no existe 'Detalle pagado')"
-        )
-
-        ttk.Label(contenido, text="Periodo de respaldo", style="Section.TLabel").pack(
-            anchor="w", padx=28, pady=(12, 2)
-        )
-        ttk.Label(
-            contenido,
-            text="Solo se usa cuando el nombre del archivo no trae mes y año.",
-            style="Hint.TLabel",
-        ).pack(anchor="w", padx=28, pady=(0, 8))
-        periodo = tk.Frame(contenido, bg=COLORES["fondo"])
-        periodo.pack(fill="x", padx=28, pady=(0, 8))
-        ttk.Label(periodo, text="Mes").pack(side="left")
-        ttk.Combobox(
-            periodo,
-            textvariable=self.mes_anp,
-            values=[MESES_INV[n] for n in range(1, 13)],
-            state="readonly",
-            width=16,
-        ).pack(side="left", padx=(8, 18))
-        ttk.Label(periodo, text="Año").pack(side="left")
-        ttk.Entry(periodo, textvariable=self.anio_anp, width=10).pack(
-            side="left", padx=(8, 0)
         )
 
         ttk.Label(contenido, text="Salida", style="Section.TLabel").pack(
@@ -1076,15 +1057,73 @@ class VentanaPrincipal:
         self.carpeta_salida_anp = carpeta
         reemplazar_texto(self.entrada_salida_anp, carpeta)
 
-    def _periodo_respaldo_anp(self):
-        try:
-            anio = int(str(self.anio_anp.get()).strip())
-        except (TypeError, ValueError):
-            raise ValueError("El año de respaldo no es válido.")
-        mes = MESES.get(str(self.mes_anp.get()).strip().lower())
-        if mes is None:
-            raise ValueError("Debe seleccionar el mes de respaldo.")
-        return anio, mes
+    def _dialogo_periodo_anp(self, nombre_archivo):
+        ventana = tk.Toplevel(self.root)
+        ventana.title("Periodo del archivo")
+        ventana.transient(self.root)
+        ventana.resizable(False, False)
+        resultado = {"anio": None, "mes": None, "ok": False}
+
+        cuerpo = ttk.Frame(ventana, padding=16)
+        cuerpo.pack(fill="both", expand=True)
+        ttk.Label(
+            cuerpo,
+            text=f"No se detectó el periodo de:\n{nombre_archivo}",
+            wraplength=420,
+        ).pack(anchor="w", pady=(0, 10))
+
+        anio_prev, mes_prev = self._ultimo_periodo_anp
+        fila = ttk.Frame(cuerpo)
+        fila.pack(fill="x", pady=(0, 12))
+        ttk.Label(fila, text="Mes").pack(side="left")
+        mes_var = tk.StringVar(value=MESES_INV[mes_prev])
+        ttk.Combobox(
+            fila,
+            textvariable=mes_var,
+            values=[MESES_INV[n] for n in range(1, 13)],
+            state="readonly",
+            width=16,
+        ).pack(side="left", padx=(8, 16))
+        ttk.Label(fila, text="Año").pack(side="left")
+        anio_var = tk.StringVar(value=str(anio_prev))
+        ttk.Entry(fila, textvariable=anio_var, width=10).pack(side="left", padx=(8, 0))
+
+        def aceptar():
+            mes = MESES.get(mes_var.get().strip().lower())
+            try:
+                anio = int(anio_var.get().strip())
+            except (TypeError, ValueError):
+                messagebox.showerror("Base ANP", "El año no es válido.", parent=ventana)
+                return
+            if mes is None:
+                messagebox.showerror("Base ANP", "Debe seleccionar el mes.", parent=ventana)
+                return
+            resultado["anio"] = anio
+            resultado["mes"] = mes
+            resultado["ok"] = True
+            self._ultimo_periodo_anp = (anio, mes)
+            ventana.destroy()
+
+        ttk.Button(cuerpo, text="Aceptar", command=aceptar).pack(pady=(4, 0))
+        ventana.protocol("WM_DELETE_WINDOW", ventana.destroy)
+        ventana.grab_set()
+        ventana.wait_window()
+        if not resultado["ok"]:
+            return None
+        return resultado["anio"], resultado["mes"]
+
+    def _periodos_archivos_anp(self, archivos):
+        periodos = {}
+        for archivo in archivos:
+            ruta = str(Path(archivo).resolve())
+            anio, mes = detectar_periodo_archivo(ruta)
+            if anio is None or mes is None:
+                elegido = self._dialogo_periodo_anp(Path(ruta).name)
+                if elegido is None:
+                    return None
+                anio, mes = elegido
+            periodos[ruta] = (anio, mes)
+        return periodos
 
     def _crear_tab_acerca(self):
         contenido = crear_area_desplazable(self.tab_acerca)
@@ -1892,16 +1931,18 @@ class VentanaPrincipal:
                 raise ValueError("Debe seleccionar uno o más Excel de Detalle pagado.")
             if not self.carpeta_salida_anp:
                 raise ValueError("Debe seleccionar la carpeta de salida.")
-            anio, mes = self._periodo_respaldo_anp()
         except ValueError as error:
             messagebox.showerror("Base ANP", str(error))
             return
+        periodos = self._periodos_archivos_anp(list(self.archivos_anp))
+        if periodos is None:
+            return
         hojas = [hoja for hoja, variable in self.checks_anp if variable.get()]
         self._ejecutar_en_hilo(
-            lambda: self._worker_base_anp(list(self.archivos_anp), anio, mes, hojas)
+            lambda: self._worker_base_anp(list(self.archivos_anp), periodos, hojas)
         )
 
-    def _worker_base_anp(self, archivos, anio, mes, hojas):
+    def _worker_base_anp(self, archivos, periodos, hojas):
         self.root.after(0, lambda: self._set_ejecutando(True))
         self._progreso_global = True
         self._progreso_minimo = 0
@@ -1910,8 +1951,7 @@ class VentanaPrincipal:
             resultado = generar_base_anp(
                 archivos,
                 self.carpeta_salida_anp,
-                anio_respaldo=anio,
-                mes_respaldo=mes,
+                periodos,
                 hojas=hojas or None,
                 actualizar_estado=self.actualizar_estado,
             )

@@ -244,7 +244,7 @@ def _leer_hojas_anp(ruta, hojas):
     return pd.concat(dataframes, ignore_index=True)
 
 
-def procesar_archivo_anp(ruta, anio_respaldo, mes_respaldo, hojas_preferidas):
+def procesar_archivo_anp(ruta, anio, mes, hojas_preferidas):
     hojas = _hojas_archivo(ruta, hojas_preferidas)
     if not hojas:
         raise ValueError(
@@ -259,11 +259,8 @@ def procesar_archivo_anp(ruta, anio_respaldo, mes_respaldo, hojas_preferidas):
     if df.empty:
         raise ValueError("El detalle quedó vacío después de quitar resumenes.")
 
-    anio, mes = detectar_periodo_archivo(ruta)
     if anio is None or mes is None:
-        anio, mes = anio_respaldo, mes_respaldo
-    if anio is None or mes is None:
-        raise ValueError("No se detectó el periodo en el nombre del archivo.")
+        raise ValueError("No se indicó el periodo del archivo.")
 
     col_pago = encontrar_columna_pago(df.columns)
     if col_pago is None:
@@ -290,8 +287,7 @@ def _avisar(actualizar_estado, texto, progreso):
 def generar_base_anp(
     archivos,
     carpeta_salida,
-    anio_respaldo=None,
-    mes_respaldo=None,
+    periodos,
     hojas=None,
     actualizar_estado=None,
 ):
@@ -321,9 +317,8 @@ def generar_base_anp(
             progreso,
         )
         try:
-            df = procesar_archivo_anp(
-                archivo, anio_respaldo, mes_respaldo, hojas
-            )
+            anio, mes = periodos[archivo]
+            df = procesar_archivo_anp(archivo, anio, mes, hojas)
         except Exception as error:
             errores.append({"Archivo": archivo, "Error": str(error)})
             continue
