@@ -99,7 +99,6 @@ class VentanaPrincipal:
         self.pp_extra_seq = {"actual": 0, "anterior": 0}
         self.pp_frames_extras = {}
         self.archivos_anp = []
-        self.carpeta_salida_anp = None
         self.checks_anp = []
         self.incluir_subcarpetas_anp = tk.BooleanVar(value=True)
         self._ultimo_periodo_anp = (
@@ -934,11 +933,10 @@ class VentanaPrincipal:
         ttk.Label(
             cuerpo,
             text=(
-                "Etapa final independiente. Lee Excel de Detalle pagado, ajusta "
-                "la fecha de pago al mes de cada archivo y genera CSV individuales "
-                "más Bases ANP.csv. Una carpeta puede traer varios meses: el mes "
-                "se toma del nombre de cada Excel. Si no se detecta, se pregunta "
-                "mes y año de ese archivo."
+                "Etapa final independiente. Lee Excel de Detalle pagado, arma la "
+                "tabla dinámica Promotor × Mes × Ramo (suma de PNA: GMM y Vida) "
+                "y guarda Base ANP.xlsx en la raíz del proyecto. El mes sale de "
+                "F. Pago; si no se detecta la columna, se pide a mano."
             ),
             style="Muted.TLabel",
             wraplength=900,
@@ -961,16 +959,6 @@ class VentanaPrincipal:
         ).pack(anchor="w", padx=32, pady=(0, 8))
         self.frame_anp_hojas = self._marco_hojas(
             contenido, "Hojas (si no existe 'Detalle pagado')"
-        )
-
-        ttk.Label(contenido, text="Salida", style="Section.TLabel").pack(
-            anchor="w", padx=28, pady=(12, 2)
-        )
-        self.entrada_salida_anp = crear_selector_archivo(
-            contenido,
-            "Carpeta de salida",
-            self._seleccionar_salida_anp,
-            ayuda="Ahí se guardan CSV_Individuales, Bases ANP.csv y LOG_ERRORES.xlsx.",
         )
 
         boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
@@ -1050,12 +1038,51 @@ class VentanaPrincipal:
         if not hay_detalle and len(self.checks_anp) == 1:
             self.checks_anp[0][1].set(True)
 
-    def _seleccionar_salida_anp(self):
-        carpeta = filedialog.askdirectory(title="Carpeta de salida")
-        if not carpeta:
-            return
-        self.carpeta_salida_anp = carpeta
-        reemplazar_texto(self.entrada_salida_anp, carpeta)
+    def _dialogo_columna_anp(self, nombre_archivo, columnas, etiqueta):
+        ventana = tk.Toplevel(self.root)
+        ventana.title(f"Columna {etiqueta}")
+        ventana.transient(self.root)
+        ventana.resizable(False, False)
+        resultado = {"valor": None}
+
+        cuerpo = ttk.Frame(ventana, padding=16)
+        cuerpo.pack(fill="both", expand=True)
+        ttk.Label(
+            cuerpo,
+            text=(
+                f"No se detectó la columna {etiqueta} en:\n{nombre_archivo}\n"
+                "Seleccione la columna correspondiente."
+            ),
+            wraplength=460,
+        ).pack(anchor="w", pady=(0, 10))
+        combo = ttk.Combobox(cuerpo, values=columnas, state="readonly", width=56)
+        combo.pack(fill="x")
+        if columnas:
+            combo.current(0)
+
+        def aceptar():
+            resultado["valor"] = combo.get().strip() or None
+            ventana.destroy()
+
+        ttk.Button(cuerpo, text="Aceptar", command=aceptar).pack(pady=(12, 0))
+        ventana.protocol("WM_DELETE_WINDOW", ventana.destroy)
+        ventana.grab_set()
+        ventana.wait_window()
+        return resultado["valor"]
+
+    def _pedir_columna_anp(self, nombre_archivo, columnas, etiqueta):
+        resultado = {"valor": None}
+        evento = threading.Event()
+
+        def mostrar():
+            resultado["valor"] = self._dialogo_columna_anp(
+                nombre_archivo, columnas, etiqueta
+            )
+            evento.set()
+
+        self.root.after(0, mostrar)
+        evento.wait()
+        return resultado["valor"]
 
     def _dialogo_periodo_anp(self, nombre_archivo):
         ventana = tk.Toplevel(self.root)
@@ -1929,8 +1956,6 @@ class VentanaPrincipal:
         try:
             if not self.archivos_anp:
                 raise ValueError("Debe seleccionar uno o más Excel de Detalle pagado.")
-            if not self.carpeta_salida_anp:
-                raise ValueError("Debe seleccionar la carpeta de salida.")
         except ValueError as error:
             messagebox.showerror("Base ANP", str(error))
             return
@@ -1950,10 +1975,10 @@ class VentanaPrincipal:
         try:
             resultado = generar_base_anp(
                 archivos,
-                self.carpeta_salida_anp,
                 periodos,
                 hojas=hojas or None,
                 actualizar_estado=self.actualizar_estado,
+                pedir_columna=self._pedir_columna_anp,
             )
             self.actualizar_estado("Base ANP completada correctamente", 100, "ok")
             extra = ""
