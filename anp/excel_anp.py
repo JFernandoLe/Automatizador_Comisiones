@@ -80,6 +80,33 @@ def _escribir_resumen(ws, resumen):
         general.font = FUENTE
         general.number_format = FORMATO_MONTO
 
+    fila_totales = 3 + len(resumen["filas"])
+    etiqueta = ws.cell(row=fila_totales, column=1, value="Total")
+    etiqueta.font = FUENTE_TITULO
+    col = 2
+    total_final = 0.0
+    for anio, mes in meses:
+        gmm = 0.0
+        vida = 0.0
+        for fila in resumen["filas"]:
+            montos = fila["valores"].get((anio, mes), {})
+            gmm += float(montos.get("GMM") or 0)
+            vida += float(montos.get("Vida") or 0)
+        total = gmm + vida
+        total_final += total
+        for monto in (gmm, vida, total):
+            celda = ws.cell(
+                row=fila_totales, column=col, value=_valor_celda(monto)
+            )
+            celda.font = FUENTE_TITULO
+            celda.number_format = FORMATO_MONTO
+            col += 1
+    general = ws.cell(
+        row=fila_totales, column=total_col, value=_valor_celda(total_final)
+    )
+    general.font = FUENTE_TITULO
+    general.number_format = FORMATO_MONTO
+
     ws.column_dimensions["A"].width = 14
     for indice in range(2, total_col + 1):
         ws.column_dimensions[get_column_letter(indice)].width = 12
