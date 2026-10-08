@@ -21,7 +21,6 @@ def _valor_celda(valor):
         pass
     return valor
 
-
 def _ancho_tabla(tabla):
     return 4 + tabla["mes_hasta"]
 

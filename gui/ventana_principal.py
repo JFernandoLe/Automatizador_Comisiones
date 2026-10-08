@@ -1,4 +1,6 @@
 from datetime import datetime
+import shutil
+import tempfile
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -28,6 +30,7 @@ from anp.base_anp import (
     generar_base_anp,
     listar_excel_anp,
 )
+from fase2.procesador import generar_comision_fase2
 from fase2.transformaciones import (
     CONCEPTOS_DETALLE,
     FIGURAS_DETALLE,
@@ -35,6 +38,7 @@ from fase2.transformaciones import (
 )
 from procesos.bases_sap import generar_bases_sap
 from procesos.comisiones import generar_comisiones
+from procesos.consolidar import consolidar_excels
 from procesos.reporte_final import generar_reporte_final
 from servicios.excel import (
     listar_archivos_saa,
@@ -60,6 +64,14 @@ TIPOS_REPORTE = [
     ("Parquet", "*.parquet"),
 ]
 CLAVES_MULTIPLES = ("vida", "gmm", "saa", "manuales")
+RAIZ_PROYECTO = Path(__file__).resolve().parents[1]
+ARCHIVO_CONSOLIDADO = RAIZ_PROYECTO / "CommiFlow.xlsx"
+INTERMEDIOS_REPORTE = (
+    "Reporte_VIDA_Final.xlsx",
+    "Reporte_GMM_Final.xlsx",
+    "Reporte_VIDA_Final.parquet",
+    "Reporte_GMM_Final.parquet",
+)
 
 
 class VentanaPrincipal:
@@ -187,11 +199,13 @@ class VentanaPrincipal:
         self.tab_fase2 = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_bases_pp = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_base_anp = ttk.Frame(self.notebook, style="Fondo.TFrame")
+        self.tab_proceso_total = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_acerca = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.notebook.add(self.tab_completo, text="Proceso")
         self.notebook.add(self.tab_fase2, text="Comisiones y Bonos")
         self.notebook.add(self.tab_bases_pp, text="Bases PP")
         self.notebook.add(self.tab_base_anp, text="Base ANP")
+        self.notebook.add(self.tab_proceso_total, text="Proceso Completo")
         self.notebook.add(self.tab_acerca, text="Acerca de")
 
         self.tab_bases = ttk.Frame(self.root)
@@ -202,6 +216,7 @@ class VentanaPrincipal:
         self._crear_tab_fase2()
         self._crear_tab_bases_pp()
         self._crear_tab_base_anp()
+        self._crear_tab_proceso_total()
         self._crear_tab_acerca()
         self._crear_tab_bases()
         self._crear_tab_comisiones()
@@ -1152,6 +1167,109 @@ class VentanaPrincipal:
             periodos[ruta] = (anio, mes)
         return periodos
 
+    def _crear_tab_proceso_total(self):
+        contenido = crear_area_desplazable(self.tab_proceso_total)
+
+        exterior = tk.Frame(contenido, bg=COLORES["fondo"])
+        exterior.pack(fill="x", padx=28, pady=(18, 10))
+        borde = tk.Frame(exterior, bg=COLORES["borde"])
+        borde.pack(fill="x")
+        tarjeta = tk.Frame(borde, bg=COLORES["tarjeta"])
+        tarjeta.pack(fill="x", padx=1, pady=1)
+        acento = tk.Frame(tarjeta, bg=COLORES["primario"], width=4)
+        acento.pack(side="left", fill="y")
+        cuerpo = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
+        cuerpo.pack(fill="x", padx=16, pady=14)
+        ttk.Label(
+            cuerpo, text="Proceso Completo", style="CardTitle.TLabel"
+        ).pack(anchor="w")
+        ttk.Label(
+            cuerpo,
+            text=(
+                "Ejecuta de inicio a fin las pestañas Proceso, Comisiones y Bonos, "
+                "Bases PP y Base ANP. Use los archivos ya seleccionados en cada pestaña. "
+                "Los reportes VIDA Final y GMM Final se generan solo como insumo interno "
+                "y no quedan como archivos descargables. El resultado se consolida en "
+                f"{ARCHIVO_CONSOLIDADO.name}, con cada salida en una hoja distinta."
+            ),
+            style="Muted.TLabel",
+            wraplength=900,
+        ).pack(anchor="w", pady=(2, 0))
+
+        etapas = tk.Frame(contenido, bg=COLORES["fondo"])
+        etapas.pack(fill="x", padx=28, pady=(8, 4))
+        ttk.Label(etapas, text="Etapas que se ejecutarán", style="Section.TLabel").pack(
+            anchor="w"
+        )
+        for numero, titulo, detalle in (
+            (
+                "1",
+                "Proceso",
+                "Bases SAP, comisiones y reporte interno VIDA/GMM (sin dejar Excel final).",
+            ),
+            (
+                "2",
+                "Comisiones y Bonos",
+                "Usa el reporte interno y genera Comisión y Pagos de Bonos.",
+            ),
+            (
+                "3",
+                "Bases PP",
+                "Genera las tablas de primas del año actual y anterior.",
+            ),
+            (
+                "4",
+                "Base ANP",
+                "Genera el resumen y el detalle de Detalle pagado.",
+            ),
+            (
+                "5",
+                "Consolidación",
+                f"Une todo en {ARCHIVO_CONSOLIDADO.name} y elimina los archivos intermedios.",
+            ),
+        ):
+            fila = tk.Frame(etapas, bg=COLORES["fondo"])
+            fila.pack(fill="x", pady=(8, 0))
+            ttk.Label(
+                fila,
+                text=f"{numero}. {titulo}",
+                style="CardTitle.TLabel",
+            ).pack(anchor="w")
+            ttk.Label(fila, text=detalle, style="Muted.TLabel", wraplength=900).pack(
+                anchor="w"
+            )
+
+        boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
+        boton_frame.pack(pady=(24, 36))
+        self.boton_proceso_total = tk.Button(
+            boton_frame,
+            text="Ejecutar proceso completo",
+            command=self.ejecutar_proceso_total,
+            bg=COLORES["primario"],
+            fg="#FFFFFF",
+            activebackground=COLORES["primario_hover"],
+            activeforeground="#FFFFFF",
+            font=("Segoe UI Semibold", 12),
+            relief="flat",
+            bd=0,
+            cursor="hand2",
+            padx=32,
+            pady=11,
+        )
+        self.boton_proceso_total.pack()
+        self.boton_proceso_total.bind(
+            "<Enter>",
+            lambda _e: self.boton_proceso_total.config(bg=COLORES["primario_hover"])
+            if str(self.boton_proceso_total["state"]) == "normal"
+            else None,
+        )
+        self.boton_proceso_total.bind(
+            "<Leave>",
+            lambda _e: self.boton_proceso_total.config(bg=COLORES["primario"])
+            if str(self.boton_proceso_total["state"]) == "normal"
+            else None,
+        )
+
     def _crear_tab_acerca(self):
         contenido = crear_area_desplazable(self.tab_acerca)
         contenedor = tk.Frame(contenido, bg=COLORES["fondo"])
@@ -1640,6 +1758,8 @@ class VentanaPrincipal:
             botones.append(self.boton_bases_pp)
         if getattr(self, "boton_anp", None) is not None:
             botones.append(self.boton_anp)
+        if getattr(self, "boton_proceso_total", None) is not None:
+            botones.append(self.boton_proceso_total)
         if ejecutando:
             for boton in botones:
                 boton.config(state="disabled", bg="#9BB8C7", cursor="arrow")
@@ -1998,6 +2118,224 @@ class VentanaPrincipal:
         except Exception as error:
             self._manejar_error(error)
         finally:
+            self._progreso_global = False
+            self.root.after(0, lambda: self._set_ejecutando(False))
+
+    def ejecutar_proceso_total(self):
+        try:
+            contexto = self._preparar_proceso_total()
+        except ValueError as error:
+            messagebox.showerror("Proceso Completo", str(error))
+            return
+        if contexto is None:
+            return
+        self._ejecutar_en_hilo(lambda: self._worker_proceso_total(contexto))
+
+    def _preparar_proceso_total(self):
+        faltantes_proceso = [
+            etiqueta
+            for clave, etiqueta in (
+                ("vida", "Base VIDA"),
+                ("gmm", "Base GMM"),
+                ("saa", "Archivo SAA"),
+                ("manuales", "Acumulado de Comisiones"),
+                ("vlsp", "Archivo VLSP"),
+                ("tipo", "Catálogo Estatus Pólizas"),
+                ("catalogos", "Archivo único de Catálogos"),
+            )
+            if not self.archivos.get(clave)
+        ]
+        if faltantes_proceso:
+            raise ValueError(
+                "Faltan archivos en la pestaña Proceso:\n"
+                + "\n".join(f"• {item}" for item in faltantes_proceso)
+            )
+
+        faltantes_fase2 = [
+            etiqueta
+            for clave, etiqueta in (
+                ("dist", "Distribución Comercial"),
+                ("catalogos", "Archivo de Catálogos (Comisiones y Bonos)"),
+                ("bonos", "Bonos"),
+                ("clasif", "Catálogo de clasificaciones"),
+            )
+            if not self.archivos_fase2.get(clave)
+        ]
+        if faltantes_fase2:
+            raise ValueError(
+                "Faltan archivos en la pestaña Comisiones y Bonos:\n"
+                + "\n".join(f"• {item}" for item in faltantes_fase2)
+            )
+
+        combinaciones = self._combinaciones_fase2()
+        hojas_fase2 = {
+            clave: self._hojas_fase2(clave)
+            for clave in ("dist", "catalogos", "bonos", "clasif")
+        }
+
+        entradas_pp, faltantes_pp = self._entradas_bases_pp()
+        if faltantes_pp:
+            listado = "\n".join(f"• {item}" for item in faltantes_pp)
+            continuar = messagebox.askyesno(
+                "Archivos faltantes",
+                f"Faltan {len(faltantes_pp)} archivo(s) de Bases PP:\n\n{listado}\n\n"
+                "¿Desea continuar con los archivos disponibles?",
+            )
+            if not continuar:
+                return None
+        if not entradas_pp:
+            raise ValueError(
+                "No hay archivos seleccionados en la pestaña Bases PP."
+            )
+
+        if not self.archivos_anp:
+            raise ValueError(
+                "Debe seleccionar uno o más Excel de Detalle pagado en Base ANP."
+            )
+        periodos_anp = self._periodos_archivos_anp(list(self.archivos_anp))
+        if periodos_anp is None:
+            return None
+        hojas_anp = [hoja for hoja, variable in self.checks_anp if variable.get()]
+
+        return {
+            "combinaciones": combinaciones,
+            "hojas_fase2": hojas_fase2,
+            "entradas_pp": entradas_pp,
+            "archivos_anp": list(self.archivos_anp),
+            "periodos_anp": periodos_anp,
+            "hojas_anp": hojas_anp,
+        }
+
+    @staticmethod
+    def _ruta_reporte_generado(ramo):
+        candidatos = []
+        for nombre in (
+            f"Reporte_{ramo}_Final.parquet",
+            f"Reporte_{ramo}_Final.xlsx",
+        ):
+            candidatos.append(Path(nombre))
+            candidatos.append(RAIZ_PROYECTO / nombre)
+        vistos = set()
+        for ruta in candidatos:
+            resuelta = ruta.resolve()
+            clave = str(resuelta)
+            if clave in vistos:
+                continue
+            vistos.add(clave)
+            if not resuelta.exists():
+                continue
+            if resuelta.suffix.lower() == ".parquet":
+                return str(resuelta), None
+            return str(resuelta), obtener_hojas(str(resuelta)) or None
+        raise ValueError(
+            f"No se generó el Reporte {ramo} Final para Comisiones y Bonos."
+        )
+
+    @staticmethod
+    def _limpiar_reportes_intermedios():
+        vistos = set()
+        for nombre in INTERMEDIOS_REPORTE:
+            for carpeta in (Path.cwd(), RAIZ_PROYECTO):
+                ruta = (carpeta / nombre).resolve()
+                clave = str(ruta)
+                if clave in vistos:
+                    continue
+                vistos.add(clave)
+                if ruta.exists():
+                    try:
+                        ruta.unlink()
+                    except OSError:
+                        pass
+
+    def _worker_proceso_total(self, contexto):
+        self.root.after(0, lambda: self._set_ejecutando(True))
+        self._progreso_global = True
+        self._progreso_minimo = 0
+        self.actualizar_estado("Iniciando proceso completo...", 0)
+        carpeta_temp = Path(tempfile.mkdtemp(prefix="commiflow_"))
+        usados_internos = False
+        try:
+            self._worker_bases(
+                mostrar_mensaje=False,
+                proceso_completo=True,
+                callback=self._reportar_etapa(2, 22),
+            )
+            self._worker_comisiones(
+                mostrar_mensaje=False,
+                proceso_completo=True,
+                callback=self._reportar_etapa(22, 36),
+            )
+            self._worker_reporte(
+                mostrar_mensaje=False,
+                proceso_completo=True,
+                callback=self._reportar_etapa(36, 50),
+            )
+            usados_internos = True
+            ruta_vida, hojas_vida = self._ruta_reporte_generado("VIDA")
+            ruta_gmm, hojas_gmm = self._ruta_reporte_generado("GMM")
+
+            ruta_comision = carpeta_temp / "Comision.xlsx"
+            generar_comision_fase2(
+                ruta_vida,
+                hojas_vida,
+                ruta_gmm,
+                hojas_gmm,
+                self.archivos_fase2["dist"],
+                contexto["hojas_fase2"]["dist"],
+                self.archivos_fase2["catalogos"],
+                contexto["hojas_fase2"]["catalogos"],
+                self.archivos_fase2["bonos"],
+                contexto["hojas_fase2"]["bonos"],
+                self.archivos_fase2["clasif"],
+                contexto["hojas_fase2"]["clasif"],
+                combinaciones=contexto["combinaciones"],
+                actualizar_estado=self._reportar_etapa(50, 68),
+                ruta_salida=str(ruta_comision),
+            )
+            self._limpiar_reportes_intermedios()
+            usados_internos = False
+
+            ruta_primas = carpeta_temp / "Primas.xlsx"
+            generar_primas(
+                contexto["entradas_pp"],
+                ruta_salida=str(ruta_primas),
+                actualizar_estado=self._reportar_etapa(68, 82),
+            )
+
+            ruta_anp = carpeta_temp / "Base ANP.xlsx"
+            generar_base_anp(
+                contexto["archivos_anp"],
+                contexto["periodos_anp"],
+                hojas=contexto["hojas_anp"] or None,
+                actualizar_estado=self._reportar_etapa(82, 93),
+                pedir_columna=self._pedir_columna_anp,
+                ruta_salida=str(ruta_anp),
+            )
+
+            self.actualizar_estado("Consolidando Excel de salida...", 95)
+            consolidar_excels(
+                [ruta_comision, ruta_primas, ruta_anp],
+                ARCHIVO_CONSOLIDADO,
+            )
+            self.actualizar_estado(
+                "Proceso completo finalizado correctamente", 100, "ok"
+            )
+            self.root.after(
+                0,
+                lambda: messagebox.showinfo(
+                    "CommiFlow",
+                    "Proceso completo finalizado.\n\n"
+                    f"Se generó {ARCHIVO_CONSOLIDADO.name} con las hojas de "
+                    "Comisiones y Bonos, Bases PP y Base ANP.\n"
+                    "Los reportes VIDA Final y GMM Final no se conservaron.",
+                ),
+            )
+        except Exception as error:
+            self._manejar_error(error)
+        finally:
+            if usados_internos:
+                self._limpiar_reportes_intermedios()
+            shutil.rmtree(carpeta_temp, ignore_errors=True)
             self._progreso_global = False
             self.root.after(0, lambda: self._set_ejecutando(False))
 
