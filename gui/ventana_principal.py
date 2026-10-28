@@ -950,8 +950,8 @@ class VentanaPrincipal:
             text=(
                 "Etapa final independiente. Lee Excel de Detalle pagado, arma la "
                 "tabla dinámica Promotor × Mes × Ramo (suma de PNA: GMM y Vida) "
-                "y guarda Base ANP.xlsx en la raíz del proyecto. El mes sale de "
-                "F. Pago; si no se detecta la columna, se pide a mano."
+                "y al generar le pregunta dónde guardar Base ANP.xlsx. El mes "
+                "sale de F. Pago; si no se detecta la columna, se pide a mano."
             ),
             style="Muted.TLabel",
             wraplength=900,
@@ -2082,12 +2082,27 @@ class VentanaPrincipal:
         periodos = self._periodos_archivos_anp(list(self.archivos_anp))
         if periodos is None:
             return
+        carpeta_inicial = getattr(self, "_ultima_carpeta_anp", None) or str(
+            RAIZ_PROYECTO
+        )
+        ruta_salida = filedialog.asksaveasfilename(
+            title="Guardar Base ANP",
+            defaultextension=".xlsx",
+            filetypes=[("Excel", "*.xlsx")],
+            initialfile="Base ANP.xlsx",
+            initialdir=carpeta_inicial,
+        )
+        if not ruta_salida:
+            return
+        self._ultima_carpeta_anp = str(Path(ruta_salida).parent)
         hojas = [hoja for hoja, variable in self.checks_anp if variable.get()]
         self._ejecutar_en_hilo(
-            lambda: self._worker_base_anp(list(self.archivos_anp), periodos, hojas)
+            lambda: self._worker_base_anp(
+                list(self.archivos_anp), periodos, hojas, ruta_salida
+            )
         )
 
-    def _worker_base_anp(self, archivos, periodos, hojas):
+    def _worker_base_anp(self, archivos, periodos, hojas, ruta_salida):
         self.root.after(0, lambda: self._set_ejecutando(True))
         self._progreso_global = True
         self._progreso_minimo = 0
@@ -2099,6 +2114,7 @@ class VentanaPrincipal:
                 hojas=hojas or None,
                 actualizar_estado=self.actualizar_estado,
                 pedir_columna=self._pedir_columna_anp,
+                ruta_salida=ruta_salida,
             )
             self.actualizar_estado("Base ANP completada correctamente", 100, "ok")
             extra = ""
