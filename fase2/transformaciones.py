@@ -392,19 +392,34 @@ def construir_comision_base(df_vida, df_gmm, dist_map, pfpm_map):
                     "Mes": base["MES"],
                     "TIPO COMISIÓN": base["TIPO_COM"],
                     "Tipo": tipo,
-                    "PROMOTOR": [
+                    "PROMOTOR": base["PROMOTORIA"],
+                    "CLAVE": base["CLAVE"],
+                    "COMISION": base["COMISION"],
+                    "PROMOTORIA": [
                         resolver_prom(promotoria, dist_map, pfpm_map)
                         for promotoria in base["PROMOTORIA"]
                     ],
-                    "CLAVE": base["CLAVE"],
-                    "COMISION": base["COMISION"],
-                    "PROMOTORIA": base["PROMOTORIA"],
                 }
             )
         )
     if not partes:
         return pd.DataFrame(columns=COLUMNAS_COMISION_BASE)
-    return pd.concat(partes, ignore_index=True)[COLUMNAS_COMISION_BASE]
+    tabla = pd.concat(partes, ignore_index=True)
+    claves = [
+        "Conducto",
+        "Mes",
+        "TIPO COMISIÓN",
+        "Tipo",
+        "PROMOTOR",
+        "CLAVE",
+        "PROMOTORIA",
+    ]
+    return (
+        tabla.groupby(claves, dropna=False, as_index=False)["COMISION"]
+        .sum()
+        .sort_values(["Mes", "CLAVE"], kind="mergesort")
+        .reset_index(drop=True)[COLUMNAS_COMISION_BASE]
+    )
 
 
 def _norm_nombre(valor):
