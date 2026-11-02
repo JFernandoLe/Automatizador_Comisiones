@@ -8,6 +8,7 @@ COL_COMISION = "COMISION"
 COL_TIPO_COM = "TIPO COMISIÓN"
 COL_ROL = "COMO PROMOTOR / AGENTE"
 COL_TIPO_PROD = "Tipo"
+COL_MES = "MES"
 
 ROLES_AGENTE = {"AGENTE", "AGENTES"}
 ROLES_PROMOTOR = {"PROMOTOR"}
@@ -59,6 +60,17 @@ COLUMNAS_GMM = [
     "PROMOTOR_REN",
     "PROMOTOR_TOTAL",
     "TOTAL_GENERAL",
+]
+
+COLUMNAS_COMISION_BASE = [
+    "Conducto",
+    "Mes",
+    "TIPO COMISIÓN",
+    "Tipo",
+    "PROMOTOR",
+    "CLAVE",
+    "COMISION",
+    "PROMOTORIA",
 ]
 
 
@@ -198,6 +210,12 @@ def _clave_grupo(valor):
     return entero if entero is not None else str(valor).strip()
 
 
+def _mes_texto(valor):
+    if _es_vacio(valor):
+        return ""
+    return str(valor).strip().upper()
+
+
 def _preparar_base(df, con_producto=False):
     faltantes = [
         col
@@ -218,6 +236,10 @@ def _preparar_base(df, con_producto=False):
     salida["COMISION"] = pd.to_numeric(df[COL_COMISION], errors="coerce").fillna(0)
     salida["ROL"] = df[COL_ROL].map(_normalizar_rol)
     salida["TIPO_COM"] = df[COL_TIPO_COM].map(_normalizar_tipo_com)
+    if COL_MES in df.columns:
+        salida["MES"] = df[COL_MES].map(_mes_texto)
+    else:
+        salida["MES"] = ""
     if con_producto:
         salida["PRODUCTO"] = df[COL_TIPO_PROD].map(_producto)
     salida = salida[salida["ROL"].notna() & salida["TIPO_COM"].notna()].copy()
@@ -353,6 +375,36 @@ def construir_tabla_gmm(df, dist_map, pfpm_map):
     if not filas:
         return pd.DataFrame(columns=COLUMNAS_GMM)
     return pd.DataFrame(filas)[COLUMNAS_GMM]
+
+
+def construir_comision_base(df_vida, df_gmm, dist_map, pfpm_map):
+    partes = []
+    for df, tipo in ((df_vida, "VIDA"), (df_gmm, "GMM")):
+        if df is None or df.empty:
+            continue
+        base = _preparar_base(df, con_producto=tipo == "VIDA")
+        if base.empty:
+            continue
+        partes.append(
+            pd.DataFrame(
+                {
+                    "Conducto": base["ROL"],
+                    "Mes": base["MES"],
+                    "TIPO COMISIÓN": base["TIPO_COM"],
+                    "Tipo": tipo,
+                    "PROMOTOR": [
+                        resolver_prom(promotoria, dist_map, pfpm_map)
+                        for promotoria in base["PROMOTORIA"]
+                    ],
+                    "CLAVE": base["CLAVE"],
+                    "COMISION": base["COMISION"],
+                    "PROMOTORIA": base["PROMOTORIA"],
+                }
+            )
+        )
+    if not partes:
+        return pd.DataFrame(columns=COLUMNAS_COMISION_BASE)
+    return pd.concat(partes, ignore_index=True)[COLUMNAS_COMISION_BASE]
 
 
 def _norm_nombre(valor):

@@ -4,6 +4,7 @@ import pandas as pd
 
 from fase2.excel_salida import guardar_comision
 from fase2.transformaciones import (
+    construir_comision_base,
     construir_pagos_bonos,
     construir_tabla_gmm,
     construir_tabla_vida,
@@ -122,6 +123,8 @@ def generar_comision_fase2(
     tabla_vida = construir_tabla_vida(df_vida, dist_map, pfpm_map)
     _avisar(actualizar_estado, "Construyendo tabla GMM...", 72)
     tabla_gmm = construir_tabla_gmm(df_gmm, dist_map, pfpm_map)
+    _avisar(actualizar_estado, "Construyendo Comisión Base...", 78)
+    tabla_base = construir_comision_base(df_vida, df_gmm, dist_map, pfpm_map)
     _avisar(actualizar_estado, "Procesando Pagos de Bonos...", 84)
     tabla_bonos = construir_pagos_bonos(df_bonos, dist_map, pfpm_map, clasif_map)
 
@@ -132,6 +135,7 @@ def generar_comision_fase2(
         tabla_bonos,
         ruta_salida,
         combinaciones=combinaciones,
+        df_base=tabla_base,
     )
     _avisar(actualizar_estado, "Fase 2 generada", 100)
     print(

@@ -5,6 +5,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 import pandas as pd
 
 from fase2.transformaciones import (
+    COLUMNAS_COMISION_BASE,
     COLUMNAS_GMM,
     COLUMNAS_VIDA,
     construir_tabla_principal_bonos,
@@ -241,8 +242,42 @@ def _escribir_pagos_bonos(wb, df, combinaciones=None):
     )
 
 
+def _escribir_comision_base(wb, df):
+    ws = wb.create_sheet("Comision Base")
+    tabla = df if df is not None else pd.DataFrame(columns=COLUMNAS_COMISION_BASE)
+    if tabla.empty:
+        tabla = pd.DataFrame(columns=COLUMNAS_COMISION_BASE)
+    else:
+        tabla = tabla[COLUMNAS_COMISION_BASE]
+    for indice, nombre in enumerate(tabla.columns, start=1):
+        celda = ws.cell(row=1, column=indice, value=nombre)
+        celda.font = FUENTE_TITULO
+        celda.alignment = CENTRO
+    col_comision = list(tabla.columns).index("COMISION") + 1
+    for offset, fila in enumerate(
+        dataframe_to_rows(tabla, index=False, header=False), start=2
+    ):
+        for indice, valor in enumerate(fila, start=1):
+            celda = ws.cell(row=offset, column=indice, value=_valor_celda(valor))
+            celda.font = FUENTE
+            if indice == col_comision:
+                celda.number_format = FORMATO_MONTO
+    anchos = {
+        "A": 14,
+        "B": 14,
+        "C": 18,
+        "D": 10,
+        "E": 14,
+        "F": 14,
+        "G": 14,
+        "H": 14,
+    }
+    for col, ancho in anchos.items():
+        ws.column_dimensions[col].width = ancho
+
+
 def guardar_comision(
-    df_vida, df_gmm, df_bonos, ruta="Comision.xlsx", combinaciones=None
+    df_vida, df_gmm, df_bonos, ruta="Comision.xlsx", combinaciones=None, df_base=None
 ):
     wb = Workbook()
     ws = wb.active
@@ -266,6 +301,7 @@ def guardar_comision(
     for col, ancho in anchos.items():
         ws.column_dimensions[col].width = ancho
 
+    _escribir_comision_base(wb, df_base)
     _escribir_pagos_bonos(wb, df_bonos, combinaciones=combinaciones)
     wb.save(ruta)
     return ruta
