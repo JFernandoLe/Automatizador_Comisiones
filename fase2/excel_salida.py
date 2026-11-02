@@ -11,6 +11,7 @@ from fase2.transformaciones import (
     construir_tabla_principal_bonos,
     construir_tablas_seleccionadas_bonos,
 )
+from servicios.excel import EXCEL_MAX_ROWS
 
 FUENTE = Font(name="Calibri", size=12)
 FUENTE_TITULO = Font(name="Calibri", size=12, bold=True)
@@ -242,26 +243,15 @@ def _escribir_pagos_bonos(wb, df, combinaciones=None):
     )
 
 
-def _escribir_comision_base(wb, df):
-    ws = wb.create_sheet("Comision Base")
-    tabla = df if df is not None else pd.DataFrame(columns=COLUMNAS_COMISION_BASE)
-    if tabla.empty:
+def _escribir_comision_base(wb, df, limite_filas=EXCEL_MAX_ROWS):
+    if df is None or df.empty:
         tabla = pd.DataFrame(columns=COLUMNAS_COMISION_BASE)
     else:
-        tabla = tabla[COLUMNAS_COMISION_BASE]
-    for indice, nombre in enumerate(tabla.columns, start=1):
-        celda = ws.cell(row=1, column=indice, value=nombre)
-        celda.font = FUENTE_TITULO
-        celda.alignment = CENTRO
-    col_comision = list(tabla.columns).index("COMISION") + 1
-    for offset, fila in enumerate(
-        dataframe_to_rows(tabla, index=False, header=False), start=2
-    ):
-        for indice, valor in enumerate(fila, start=1):
-            celda = ws.cell(row=offset, column=indice, value=_valor_celda(valor))
-            celda.font = FUENTE
-            if indice == col_comision:
-                celda.number_format = FORMATO_MONTO
+        tabla = df[COLUMNAS_COMISION_BASE]
+    columnas = list(COLUMNAS_COMISION_BASE)
+    total = len(tabla)
+    n_hojas = max(1, (total + limite_filas - 1) // limite_filas)
+    col_comision = columnas.index("COMISION") + 1
     anchos = {
         "A": 14,
         "B": 14,
@@ -272,8 +262,29 @@ def _escribir_comision_base(wb, df):
         "G": 14,
         "H": 14,
     }
-    for col, ancho in anchos.items():
-        ws.column_dimensions[col].width = ancho
+
+    for indice_hoja in range(n_hojas):
+        inicio = indice_hoja * limite_filas
+        fin = min((indice_hoja + 1) * limite_filas, total)
+        nombre = (
+            "Comision Base"
+            if n_hojas == 1
+            else f"Comision Base {indice_hoja + 1}"
+        )
+        ws = wb.create_sheet(nombre)
+        ws.append(columnas)
+        for celda in ws[1]:
+            celda.font = FUENTE_TITULO
+            celda.alignment = CENTRO
+        if total:
+            for fila in tabla.iloc[inicio:fin].itertuples(index=False, name=None):
+                ws.append([_valor_celda(valor) for valor in fila])
+            for fila_excel in range(2, fin - inicio + 2):
+                ws.cell(
+                    row=fila_excel, column=col_comision
+                ).number_format = FORMATO_MONTO
+        for col, ancho in anchos.items():
+            ws.column_dimensions[col].width = ancho
 
 
 def guardar_comision(
