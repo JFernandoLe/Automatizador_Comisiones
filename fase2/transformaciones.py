@@ -444,6 +444,34 @@ def _buscar_columna(df, nombre, origen="Bonos"):
     raise ValueError(f"El archivo {origen} no contiene la columna '{nombre}'.")
 
 
+def _buscar_columna_opcional(df, nombre):
+    objetivo = _norm_nombre(nombre)
+    for col in df.columns:
+        if _norm_nombre(col) == objetivo:
+            return col
+    return None
+
+
+def _buscar_columna_partes(df, *partes):
+    objetivos = [_norm_nombre(parte).replace(".", "") for parte in partes]
+    for col in df.columns:
+        texto = _norm_nombre(col).replace(".", "").replace(" ", "")
+        if all(parte.replace(" ", "") in texto for parte in objetivos):
+            return col
+    return None
+
+
+def clasificar_nueva_clasif(ini_ren, desc_cpto):
+    concepto = _ini_ren_resumen(ini_ren)
+    if concepto in INI_APOYO_COMERCIAL:
+        return CLASIF_APOYO
+    if concepto == "Primer Año":
+        desc = _norm_nombre(desc_cpto).replace("É", "E")
+        if desc.startswith(PREFIJO_CONVENIO):
+            return CLASIF_CONVENIO
+    return CLASIF_BONO
+
+
 def _clave_cc(valor):
     entero = _a_entero(valor)
     if entero is not None:
@@ -532,6 +560,17 @@ def construir_pagos_bonos(df, dist_map, pfpm_map, clasif_map):
     salida["Ramo_clasif"] = salida[col_cpto].map(
         lambda valor: _con_na(_lookup_clasif(valor, clasif_map, "RAMO"))
     )
+    col_desc = _buscar_columna_partes(salida, "Desc", "Cpto") or _buscar_columna_opcional(
+        salida, "DESCCONCEPTO"
+    )
+    if col_desc is None:
+        desc = pd.Series([""] * len(salida), index=salida.index)
+    else:
+        desc = salida[col_desc]
+    salida["Nueva clasif"] = [
+        clasificar_nueva_clasif(ini, texto)
+        for ini, texto in zip(salida["Ini_Ren"], desc)
+    ]
     return salida
 
 
@@ -561,6 +600,18 @@ ALIAS_INI_REN = {
     "APOYO": "Apoyo",
     "OFICINA": "Oficina",
 }
+
+INI_APOYO_COMERCIAL = {
+    "Apoyo",
+    "Arranque",
+    "Campaña",
+    "Incentivo",
+    "Oficina",
+}
+PREFIJO_CONVENIO = "COMPENSACION EXTRAORDINARIA"
+CLASIF_APOYO = "Apoyo Comercial"
+CLASIF_CONVENIO = "Convenios"
+CLASIF_BONO = "Bonos"
 
 
 def _figura_resumen(valor):

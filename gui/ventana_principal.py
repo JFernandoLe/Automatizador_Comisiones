@@ -39,6 +39,7 @@ from fase2.transformaciones import (
 from procesos.bases_sap import generar_bases_sap
 from procesos.comisiones import generar_comisiones
 from procesos.consolidar import consolidar_excels
+from ingresos.procesador import RUTA_PLANTILLA, generar_ingresos
 from procesos.reporte_final import generar_reporte_final
 from servicios.excel import (
     listar_archivos_saa,
@@ -111,6 +112,9 @@ class VentanaPrincipal:
         self.pp_extra_seq = {"actual": 0, "anterior": 0}
         self.pp_frames_extras = {}
         self.archivos_anp = []
+        self.archivos_ingresos = {"actual": None, "anterior": None, "dos": None}
+        self.anio_ingresos = tk.IntVar(value=datetime.now().year)
+        self.mes_corte_ingresos = tk.IntVar(value=datetime.now().month)
         self.checks_anp = []
         self.incluir_subcarpetas_anp = tk.BooleanVar(value=True)
         self._ultimo_periodo_anp = (
@@ -200,12 +204,14 @@ class VentanaPrincipal:
         self.tab_bases_pp = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_base_anp = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_proceso_total = ttk.Frame(self.notebook, style="Fondo.TFrame")
+        self.tab_ingresos = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_acerca = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.notebook.add(self.tab_completo, text="Proceso")
         self.notebook.add(self.tab_fase2, text="Comisiones y Bonos")
         self.notebook.add(self.tab_bases_pp, text="Bases PP")
         self.notebook.add(self.tab_base_anp, text="Base ANP")
         self.notebook.add(self.tab_proceso_total, text="Proceso Completo")
+        self.notebook.add(self.tab_ingresos, text="Ingresos vs Ventas")
         self.notebook.add(self.tab_acerca, text="Acerca de")
 
         self.tab_bases = ttk.Frame(self.root)
@@ -217,6 +223,7 @@ class VentanaPrincipal:
         self._crear_tab_bases_pp()
         self._crear_tab_base_anp()
         self._crear_tab_proceso_total()
+        self._crear_tab_ingresos()
         self._crear_tab_acerca()
         self._crear_tab_bases()
         self._crear_tab_comisiones()
@@ -1270,6 +1277,121 @@ class VentanaPrincipal:
             else None,
         )
 
+    def _crear_tab_ingresos(self):
+        contenido = crear_area_desplazable(self.tab_ingresos)
+
+        exterior = tk.Frame(contenido, bg=COLORES["fondo"])
+        exterior.pack(fill="x", padx=28, pady=(18, 10))
+        borde = tk.Frame(exterior, bg=COLORES["borde"])
+        borde.pack(fill="x")
+        tarjeta = tk.Frame(borde, bg=COLORES["tarjeta"])
+        tarjeta.pack(fill="x", padx=1, pady=1)
+        acento = tk.Frame(tarjeta, bg=COLORES["primario"], width=4)
+        acento.pack(side="left", fill="y")
+        cuerpo = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
+        cuerpo.pack(fill="x", padx=16, pady=14)
+        ttk.Label(
+            cuerpo, text="Ingresos vs Ventas", style="CardTitle.TLabel"
+        ).pack(anchor="w")
+        ttk.Label(
+            cuerpo,
+            text=(
+                "Arma el Excel final con filtro por promotor o TOTAL. "
+                "El año actual sale de CommiFlow (Comisión, Primas, ANP y Bonos). "
+                "Los años que CommiFlow no genera se cargan como Excel externo "
+                "con las mismas hojas. Las cifras de las tablas están en MDP."
+            ),
+            style="Muted.TLabel",
+            wraplength=900,
+        ).pack(anchor="w", pady=(4, 0))
+
+        params = tk.Frame(contenido, bg=COLORES["fondo"])
+        params.pack(fill="x", padx=28, pady=(8, 8))
+        ttk.Label(params, text="Corte del reporte", style="Section.TLabel").pack(
+            anchor="w"
+        )
+        fila = tk.Frame(params, bg=COLORES["fondo"])
+        fila.pack(anchor="w", pady=(6, 0))
+        ttk.Label(fila, text="Año actual").pack(side="left")
+        tk.Spinbox(
+            fila,
+            from_=2020,
+            to=2100,
+            textvariable=self.anio_ingresos,
+            width=8,
+        ).pack(side="left", padx=(8, 18))
+        ttk.Label(fila, text="Mes de corte").pack(side="left")
+        self.combo_mes_ingresos = ttk.Combobox(
+            fila,
+            state="readonly",
+            values=[MESES_INV[n] for n in range(1, 13)],
+            width=14,
+        )
+        self.combo_mes_ingresos.set(MESES_INV[self.mes_corte_ingresos.get()])
+        self.combo_mes_ingresos.pack(side="left", padx=(8, 0))
+
+        self.entrada_ing_actual = crear_selector_archivo(
+            contenido,
+            "Excel del año actual",
+            lambda: self._seleccionar_archivo_ingresos("actual"),
+            ayuda="CommiFlow.xlsx o el Excel que ya tenga Comisión Base, Pagos de Bonos, Bases PP y Detalle ANP.",
+        )
+        self.entrada_ing_anterior = crear_selector_archivo(
+            contenido,
+            "Excel del año anterior (opcional)",
+            lambda: self._seleccionar_archivo_ingresos("anterior"),
+            ayuda="Bases finales del año que CommiFlow no genera. Puede ser otro CommiFlow o un Excel con hoja Datos.",
+        )
+        self.entrada_ing_dos = crear_selector_archivo(
+            contenido,
+            "Excel de hace dos años (opcional)",
+            lambda: self._seleccionar_archivo_ingresos("dos"),
+            ayuda="Se usa en la segunda hoja para comparar el año completo anterior vs hace dos años.",
+        )
+
+        boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
+        boton_frame.pack(pady=(24, 36))
+        self.boton_ingresos = tk.Button(
+            boton_frame,
+            text="Generar Ingresos vs Ventas",
+            command=self.ejecutar_ingresos,
+            bg=COLORES["primario"],
+            fg="#FFFFFF",
+            activebackground=COLORES["primario_hover"],
+            activeforeground="#FFFFFF",
+            font=("Segoe UI Semibold", 12),
+            relief="flat",
+            bd=0,
+            cursor="hand2",
+            padx=32,
+            pady=11,
+        )
+        self.boton_ingresos.pack()
+        self.boton_ingresos.bind(
+            "<Enter>",
+            lambda _e: self.boton_ingresos.config(bg=COLORES["primario_hover"])
+            if str(self.boton_ingresos["state"]) == "normal"
+            else None,
+        )
+        self.boton_ingresos.bind(
+            "<Leave>",
+            lambda _e: self.boton_ingresos.config(bg=COLORES["primario"])
+            if str(self.boton_ingresos["state"]) == "normal"
+            else None,
+        )
+
+    def _seleccionar_archivo_ingresos(self, clave):
+        archivo = filedialog.askopenfilename(filetypes=TIPOS_EXCEL)
+        if not archivo:
+            return
+        self.archivos_ingresos[clave] = archivo
+        entradas = {
+            "actual": self.entrada_ing_actual,
+            "anterior": self.entrada_ing_anterior,
+            "dos": self.entrada_ing_dos,
+        }
+        reemplazar_texto(entradas[clave], archivo)
+
     def _crear_tab_acerca(self):
         contenido = crear_area_desplazable(self.tab_acerca)
         contenedor = tk.Frame(contenido, bg=COLORES["fondo"])
@@ -1760,6 +1882,8 @@ class VentanaPrincipal:
             botones.append(self.boton_anp)
         if getattr(self, "boton_proceso_total", None) is not None:
             botones.append(self.boton_proceso_total)
+        if getattr(self, "boton_ingresos", None) is not None:
+            botones.append(self.boton_ingresos)
         if ejecutando:
             for boton in botones:
                 boton.config(state="disabled", bg="#9BB8C7", cursor="arrow")
@@ -2352,6 +2476,64 @@ class VentanaPrincipal:
             if usados_internos:
                 self._limpiar_reportes_intermedios()
             shutil.rmtree(carpeta_temp, ignore_errors=True)
+            self._progreso_global = False
+            self.root.after(0, lambda: self._set_ejecutando(False))
+
+    def ejecutar_ingresos(self):
+        if not self.archivos_ingresos.get("actual"):
+            messagebox.showerror(
+                "Ingresos vs Ventas",
+                "Debe seleccionar el Excel del año actual.",
+            )
+            return
+        mes_nombre = (self.combo_mes_ingresos.get() or "").strip().lower()
+        mes = MESES.get(mes_nombre)
+        if not mes:
+            messagebox.showerror("Ingresos vs Ventas", "Seleccione el mes de corte.")
+            return
+        ruta_salida = filedialog.asksaveasfilename(
+            title="Guardar Ingresos vs Ventas",
+            defaultextension=".xlsx",
+            filetypes=[("Excel", "*.xlsx")],
+            initialfile="Ingresos vs Ventas.xlsx",
+            initialdir=str(RAIZ_PROYECTO),
+        )
+        if not ruta_salida:
+            return
+        self._ejecutar_en_hilo(
+            lambda: self._worker_ingresos(int(self.anio_ingresos.get()), mes, ruta_salida)
+        )
+
+    def _worker_ingresos(self, anio, mes, ruta_salida):
+        self.root.after(0, lambda: self._set_ejecutando(True))
+        self._progreso_global = True
+        self._progreso_minimo = 0
+        self.actualizar_estado("Iniciando Ingresos vs Ventas...", 0)
+        try:
+            ruta = generar_ingresos(
+                anio,
+                mes,
+                self.archivos_ingresos.get("actual"),
+                archivo_anterior=self.archivos_ingresos.get("anterior"),
+                archivo_dos_anios=self.archivos_ingresos.get("dos"),
+                ruta_salida=ruta_salida,
+                ruta_plantilla=str(RUTA_PLANTILLA),
+                actualizar_estado=self.actualizar_estado,
+            )
+            self.actualizar_estado("Ingresos vs Ventas generado", 100, "ok")
+            self.root.after(
+                0,
+                lambda: messagebox.showinfo(
+                    "CommiFlow",
+                    "Se generó Ingresos vs Ventas.\n\n"
+                    f"{ruta}\n\n"
+                    "En la hoja Filtro elija TOTAL o un promotor. "
+                    "Año y mes de corte se pueden cambiar en Parametros.",
+                ),
+            )
+        except Exception as error:
+            self._manejar_error(error)
+        finally:
             self._progreso_global = False
             self.root.after(0, lambda: self._set_ejecutando(False))
 
