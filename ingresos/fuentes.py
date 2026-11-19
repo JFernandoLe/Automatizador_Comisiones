@@ -71,10 +71,7 @@ MAPA_PRIMAS = (
 
 def _avisar(actualizar_estado, texto, progreso=None):
     if actualizar_estado:
-        if progreso is None:
-            actualizar_estado(texto)
-        else:
-            actualizar_estado(texto, progreso)
+        actualizar_estado(texto, progreso)
 
 
 def _a_entero(valor):
@@ -421,7 +418,7 @@ def extraer_primas(ruta):
 def extraer_paquete(ruta, anio, actualizar_estado=None):
     if not ruta or not Path(ruta).exists():
         return pd.DataFrame(columns=COLUMNAS_DATOS)
-    _avisar(actualizar_estado, f"Leyendo {Path(ruta).name}...")
+    _avisar(actualizar_estado, f"Leyendo {Path(ruta).name}...", 20)
     existente = leer_datos_existente(ruta)
     partes = [existente] if not existente.empty else []
     partes.append(extraer_comision_base(ruta, anio))

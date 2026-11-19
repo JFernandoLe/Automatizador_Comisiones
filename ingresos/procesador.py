@@ -31,10 +31,7 @@ def generar_ingresos(
 
     def avisar(texto, progreso=None):
         if actualizar_estado:
-            if progreso is None:
-                actualizar_estado(texto)
-            else:
-                actualizar_estado(texto, progreso)
+            actualizar_estado(texto, progreso)
 
     avisar("Consolidando bases de Ingresos vs Ventas...", 8)
     paquetes = [
