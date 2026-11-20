@@ -88,6 +88,21 @@ def extraer_mes_anio(ruta):
     return mes, anio
 
 
+def detectar_corte_carpeta(archivos):
+    """Mes de corte = el periodo más reciente entre los Excel de la carpeta."""
+    periodos = []
+    for archivo in archivos:
+        try:
+            mes, anio = extraer_mes_anio(archivo)
+        except ValueError:
+            continue
+        periodos.append((anio, mes))
+    if not periodos:
+        return None
+    anio, mes = max(periodos)
+    return {"anio": anio, "mes": mes}
+
+
 def clasificar_excel_pp(ruta):
     clave = _clave_archivo(ruta)
     clave = re.sub(r"^\d{1,2}\d{4}", "", clave)

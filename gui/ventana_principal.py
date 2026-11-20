@@ -19,6 +19,7 @@ from fase2.bases_pp import (
     ORDEN_TIPOS_PP,
     TITULOS_PP,
     agrupar_excel_pp,
+    detectar_corte_carpeta,
     extraer_mes_anio,
     generar_primas,
     listar_excel_primas,
@@ -105,6 +106,7 @@ class VentanaPrincipal:
         self.checks_f2_ramos = []
         self.checks_f2_conceptos = []
         self.carpetas_pp = {"actual": None, "anterior": None}
+        self.pp_corte = {"actual": None, "anterior": None}
         self.entradas_pp = {}
         self.pp_tipos = {"actual": {}, "anterior": {}}
         self.pp_rutas = {"actual": {}, "anterior": {}}
@@ -669,6 +671,9 @@ class VentanaPrincipal:
                 "del año anterior. Solo se leen Excel (.xlsx, .xls o .xlsb) del "
                 "primer nivel. Confirme los archivos de cada año (los 7 tipos "
                 "conocidos y, si aplica, bases adicionales) y la hoja de datos. "
+                "Si un producto ya no viene en el mes de corte (ej. Metplus), "
+                "use «Usar Excel de otro mes» con el último acumulado; las "
+                "columnas se arman hasta el mes de la carpeta. "
                 "El resultado se guarda como Primas.xlsx, hoja Bases PP. "
                 "Etapa independiente para pruebas."
             ),
@@ -732,7 +737,7 @@ class VentanaPrincipal:
         )
         ttk.Label(
             parent,
-            text="Marque el archivo de cada tipo y la hoja donde están Promotor, Agente, Prima Pagada y Mes. Use Agregar más si hay bases extra.",
+            text="Marque el archivo de cada tipo y la hoja donde están Promotor, Agente, Prima Pagada y Mes. Si falta un producto, use Excel de otro mes. Use Agregar más si hay bases extra.",
             style="Hint.TLabel",
         ).pack(anchor="w", padx=28, pady=(0, 8))
         for tipo_id in ORDEN_TIPOS_PP:
@@ -773,6 +778,17 @@ class VentanaPrincipal:
             "<<ComboboxSelected>>",
             lambda _e, p=periodo, t=tipo_id: self._cambiar_archivo_pp(p, t),
         )
+        etiqueta_otro = None
+        if not extra:
+            fila_otro = tk.Frame(marco, bg=COLORES["tarjeta"])
+            fila_otro.pack(fill="x", padx=6, pady=(0, 4))
+            ttk.Button(
+                fila_otro,
+                text="Usar Excel de otro mes",
+                command=lambda p=periodo, t=tipo_id: self._usar_excel_otro_mes(p, t),
+            ).pack(side="left")
+            etiqueta_otro = ttk.Label(fila_otro, text="", style="Muted.TLabel")
+            etiqueta_otro.pack(side="left", padx=(8, 0))
         frame_hojas = tk.Frame(marco, bg=COLORES["tarjeta"])
         frame_hojas.pack(fill="x", padx=6, pady=(0, 6))
         ttk.Label(
@@ -795,6 +811,8 @@ class VentanaPrincipal:
             "extra": extra,
             "titulo_var": titulo_var,
             "exterior": exterior,
+            "etiqueta_otro": etiqueta_otro,
+            "archivo_externo": None,
         }
         self.pp_tipos[periodo][tipo_id] = widgets
         if widgets["rutas"]:
@@ -834,6 +852,7 @@ class VentanaPrincipal:
             messagebox.showerror("Bases PP", str(error))
             return
         self.carpetas_pp[periodo] = carpeta
+        self.pp_corte[periodo] = detectar_corte_carpeta(archivos)
         reemplazar_texto(self.entradas_pp[periodo], carpeta)
         self._poblar_tipos_pp(periodo, archivos)
 
@@ -845,6 +864,8 @@ class VentanaPrincipal:
         for tipo_id, widgets in self.pp_tipos[periodo].items():
             widgets["rutas"] = nombres
             widgets["combo"]["values"] = valores
+            widgets["archivo_externo"] = None
+            self._texto_origen_pp(widgets, "")
             if widgets.get("extra"):
                 elegido = widgets["combo"].get()
                 if elegido in nombres:
@@ -867,9 +888,11 @@ class VentanaPrincipal:
             else:
                 widgets["combo"].set("")
                 widgets["activo"].set(False)
+                self._texto_origen_pp(widgets, "No está en esta carpeta.")
                 self._mensaje_hojas(
                     widgets["frame_hojas"],
-                    "No se detectó este tipo. Elija el Excel si aplica.",
+                    "No está en esta carpeta. Si el producto ya no se reporta, "
+                    "use «Usar Excel de otro mes» con el último acumulado.",
                 )
                 widgets["checks"] = []
 
@@ -877,12 +900,79 @@ class VentanaPrincipal:
         widgets = self.pp_tipos[periodo][tipo_id]
         if widgets["combo"].get():
             widgets["activo"].set(True)
+            if widgets.get("archivo_externo"):
+                nombre_ext = Path(widgets["archivo_externo"]).name
+                if widgets["combo"].get() != nombre_ext:
+                    widgets["archivo_externo"] = None
+                    self._texto_origen_pp(widgets, "")
             self._cargar_hojas_pp(periodo, tipo_id)
+
+    def _texto_origen_pp(self, widgets, texto):
+        etiqueta = widgets.get("etiqueta_otro")
+        if etiqueta is not None:
+            etiqueta.config(text=texto)
+
+    def _usar_excel_otro_mes(self, periodo, tipo_id):
+        if not self.carpetas_pp[periodo]:
+            messagebox.showinfo(
+                "Bases PP",
+                "Primero seleccione la carpeta del mes de corte.",
+            )
+            return
+        inicial = str(Path(self.carpetas_pp[periodo]).parent)
+        ruta = filedialog.askopenfilename(
+            title="Excel del último mes con este producto",
+            initialdir=inicial,
+            filetypes=[
+                ("Excel", "*.xlsx *.xls *.xlsb"),
+                ("Todos los archivos", "*.*"),
+            ],
+        )
+        if not ruta:
+            return
+        widgets = self.pp_tipos[periodo][tipo_id]
+        titulo = widgets["titulo_var"].get().strip() or TITULOS_PP.get(
+            tipo_id, "este producto"
+        )
+        corte = self.pp_corte.get(periodo)
+        try:
+            mes_archivo, anio_archivo = extraer_mes_anio(ruta)
+        except ValueError:
+            mes_archivo, anio_archivo = None, None
+        if corte and anio_archivo is not None and anio_archivo != corte["anio"]:
+            continuar = messagebox.askyesno(
+                "Año distinto",
+                f"El archivo de {titulo} es de {anio_archivo} y el mes de corte "
+                f"es {corte['anio']}. ¿Desea usarlo de todos modos?",
+            )
+            if not continuar:
+                return
+        nombre = Path(ruta).name
+        widgets["rutas"] = dict(widgets["rutas"] or {})
+        widgets["rutas"][nombre] = ruta
+        valores = list(widgets["combo"]["values"] or ())
+        if nombre not in valores:
+            widgets["combo"]["values"] = [*valores, nombre]
+        widgets["archivo_externo"] = ruta
+        widgets["combo"].set(nombre)
+        widgets["activo"].set(True)
+        origen = "Tomado de otro mes"
+        if mes_archivo:
+            origen = f"Tomado de otro mes ({mes_archivo:02d}/{anio_archivo})"
+        self._texto_origen_pp(widgets, f"{origen}: {nombre}")
+        self._cargar_hojas_pp(periodo, tipo_id)
+
+    def _ruta_tipo_pp(self, widgets):
+        nombre = (widgets["combo"].get() or "").strip()
+        if not nombre:
+            return None
+        if widgets.get("archivo_externo") and Path(widgets["archivo_externo"]).name == nombre:
+            return widgets["archivo_externo"]
+        return (widgets.get("rutas") or {}).get(nombre)
 
     def _cargar_hojas_pp(self, periodo, tipo_id):
         widgets = self.pp_tipos[periodo][tipo_id]
-        nombre = widgets["combo"].get()
-        ruta = widgets["rutas"].get(nombre)
+        ruta = self._ruta_tipo_pp(widgets)
         if not ruta:
             self._mensaje_hojas(
                 widgets["frame_hojas"], "Seleccione el Excel de este tipo."
@@ -911,8 +1001,7 @@ class VentanaPrincipal:
                 titulo = widgets["titulo_var"].get().strip() or TITULOS_PP.get(
                     tipo_id, "Base adicional"
                 )
-                nombre = widgets["combo"].get().strip()
-                ruta = widgets["rutas"].get(nombre) if nombre else None
+                ruta = self._ruta_tipo_pp(widgets)
                 extra = widgets.get("extra")
                 if not widgets["activo"].get() or not ruta:
                     if not extra:
@@ -923,13 +1012,18 @@ class VentanaPrincipal:
                     raise ValueError(
                         f"Debe seleccionar la hoja de datos de {etiqueta} · {titulo}."
                     )
-                mes, anio = extraer_mes_anio(ruta)
+                corte = self.pp_corte.get(periodo)
+                if corte:
+                    anio = corte["anio"]
+                    mes_hasta = corte["mes"]
+                else:
+                    mes_hasta, anio = extraer_mes_anio(ruta)
                 entradas.append(
                     {
                         "tipo_id": tipo_id,
                         "titulo": titulo,
                         "anio": anio,
-                        "mes_hasta": mes,
+                        "mes_hasta": mes_hasta,
                         "archivo": ruta,
                         "hojas": hojas,
                     }
