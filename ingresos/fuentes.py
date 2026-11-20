@@ -86,6 +86,15 @@ def _a_entero(valor):
         return None
 
 
+def _mes_desfasado(anio, mes):
+    if mes is None:
+        return anio, mes
+    mes = int(mes)
+    if mes <= 1:
+        return (int(anio) - 1 if anio is not None else None), 12
+    return anio, mes - 1
+
+
 def _mes_numero(valor):
     entero = _a_entero(valor)
     if entero is not None and 1 <= entero <= 12:
@@ -350,6 +359,7 @@ def extraer_bonos(ruta, anio):
                 mes = int(fecha.month)
         if mes is None and col_mes:
             mes = _mes_numero(fila.get(col_mes))
+        anio_fila, mes = _mes_desfasado(anio_fila, mes)
         clave_prom = _promotor(fila.get(col_prom))
         registros.append(
             {
