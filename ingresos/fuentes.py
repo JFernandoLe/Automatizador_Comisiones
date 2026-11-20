@@ -8,6 +8,7 @@ from fase2.transformaciones import (
     CLASIF_BONO,
     CLASIF_CONVENIO,
     clasificar_nueva_clasif,
+    _figura_resumen,
     _ini_ren_resumen,
     _norm_nombre,
 )
@@ -111,6 +112,10 @@ def _ini_tabla(valor):
     if "1ER" in texto or "PRIMER" in texto:
         return INI_PRIMER
     return None
+
+
+def _es_promotor(valor):
+    return _figura_resumen(valor) == "PROMOTOR"
 
 
 def _promotor(valor):
@@ -275,6 +280,8 @@ def extraer_comision_base(ruta, anio):
                 "Monto": df[columnas["COMISION"]],
             }
         )
+        if col_conducto:
+            trabajo = trabajo[trabajo["Conducto"].map(_es_promotor)]
         bloques.append(trabajo)
     if not bloques:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
@@ -305,8 +312,11 @@ def extraer_bonos(ruta, anio):
             col_desc = col
     col_fecha = columnas.get("FECHA")
     col_mes = columnas.get("MES")
+    col_figura = columnas.get("PROM_AGTE") or columnas.get("PROMAGTE")
     registros = []
     for _, fila in df.iterrows():
+        if col_figura and not _es_promotor(fila.get(col_figura)):
+            continue
         ini_raw = fila.get(col_ini) if col_ini else None
         desc = fila.get(col_desc) if col_desc else ""
         clasif = fila.get(col_clasif) if col_clasif else None
@@ -345,6 +355,7 @@ def extraer_bonos(ruta, anio):
             {
                 "Año": anio_fila,
                 "Mes": mes,
+                "Conducto": "PROMOTOR",
                 "Promotor": clave_prom,
                 "Promotoria": clave_prom,
                 "Concepto": concepto,
