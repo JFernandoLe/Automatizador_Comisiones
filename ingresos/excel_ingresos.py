@@ -188,7 +188,7 @@ def _formula_suma(anio_expr, mes_expr, concepto, ramo, ini_ren):
     if ini_ren:
         partes.append(f'Datos[Ini_Ren],"{ini_ren}"')
     filtros = ",".join(partes)
-    filtros_prom = f"{filtros},Datos[Promotor],{PROMOTOR_CELDA}"
+    filtros_prom = f"{filtros},Datos[Promotoria],{PROMOTOR_CELDA}"
     cuerpo = (
         f'IF({PROMOTOR_CELDA}="TOTAL",SUMIFS({filtros}),SUMIFS({filtros_prom}))'
     )
@@ -252,30 +252,21 @@ def _escribir_datos(wb, df):
     if "Datos" in wb.sheetnames:
         del wb["Datos"]
     ws = wb.create_sheet("Datos", 2)
-    for indice, nombre in enumerate(COLUMNAS_DATOS, start=1):
-        ws.cell(row=1, column=indice, value=nombre)
+    ws.append(list(COLUMNAS_DATOS))
     if df is None or df.empty:
-        ws.cell(row=2, column=1, value=0)
-        ws.cell(row=2, column=2, value=1)
-        ws.cell(row=2, column=3, value="TOTAL")
-        ws.cell(row=2, column=4, value="ANP")
-        ws.cell(row=2, column=5, value="VIDA")
-        ws.cell(row=2, column=7, value=0)
+        ws.append([0, 1, None, "TOTAL", None, "TOTAL", "ANP", "VIDA", None, 0])
         ultima = 2
     else:
         trabajo = df[COLUMNAS_DATOS].copy()
-        for offset, fila in enumerate(trabajo.itertuples(index=False, name=None), start=2):
-            for col, valor in enumerate(fila, start=1):
-                if col == 6 and (valor is None or (isinstance(valor, float) and pd_isna(valor))):
-                    ws.cell(row=offset, column=col, value=None)
-                else:
-                    ws.cell(row=offset, column=col, value=None if pd_isna(valor) else valor)
-            ultima = offset
+        for fila in trabajo.itertuples(index=False, name=None):
+            ws.append([None if pd_isna(valor) else valor for valor in fila])
+        ultima = 1 + len(trabajo)
     letra = get_column_letter(len(COLUMNAS_DATOS))
     tabla = Table(displayName="Datos", ref=f"A1:{letra}{ultima}")
     tabla.tableStyleInfo = TableStyleInfo(name="TableStyleMedium9", showRowStripes=True)
     ws.add_table(tabla)
-    for letra_col, ancho in zip("ABCDEFG", (10, 8, 14, 14, 10, 12, 16)):
+    anchos = (10, 8, 12, 14, 14, 14, 14, 10, 16, 16)
+    for letra_col, ancho in zip("ABCDEFGHIJ", anchos):
         ws.column_dimensions[letra_col].width = ancho
 
 
@@ -468,7 +459,9 @@ def llenar_plantilla(ruta_plantilla, ruta_salida, df_datos, anio, mes_corte):
     _escribir_parametros(wb, anio, mes_corte)
     claves = []
     if df_datos is not None and not df_datos.empty:
-        claves = list(df_datos["Promotor"].dropna().unique())
+        claves = list(df_datos["Promotoria"].dropna().unique())
+        if not claves:
+            claves = list(df_datos["Promotor"].dropna().unique())
     _escribir_promotores(wb, claves)
     _escribir_datos(wb, df_datos)
     if HOJA_TABLERO not in wb.sheetnames or HOJA_PROMOTOR not in wb.sheetnames:

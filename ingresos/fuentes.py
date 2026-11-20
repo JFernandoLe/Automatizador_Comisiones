@@ -15,7 +15,10 @@ from fase2.transformaciones import (
 COLUMNAS_DATOS = [
     "Año",
     "Mes",
+    "Conducto",
     "Promotor",
+    "Clave",
+    "Promotoria",
     "Concepto",
     "Ramo",
     "Ini_Ren",
@@ -31,6 +34,7 @@ CONCEPTO_CONVENIO = "CONVENIO"
 
 INI_PRIMER = "1ER AÑO"
 INI_RENOV = "RENOVACION"
+INI_OTROS = "OTROS CONCEPTOS"
 
 MESES_NUM = {
     "ENERO": 1,
@@ -101,7 +105,7 @@ def _ramo(valor):
 def _ini_tabla(valor):
     texto = _norm_nombre(valor)
     if "OTRO" in texto:
-        return None
+        return INI_OTROS
     if "RENOV" in texto or "CONSERV" in texto:
         return INI_RENOV
     if "1ER" in texto or "PRIMER" in texto:
@@ -119,24 +123,58 @@ def _promotor(valor):
     return texto
 
 
-def _filas(registros):
-    if not registros:
+def _completar_columnas(tabla):
+    if tabla is None or tabla.empty:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
-    tabla = pd.DataFrame(registros)
-    tabla["Monto"] = pd.to_numeric(tabla["Monto"], errors="coerce").fillna(0)
-    tabla = tabla[tabla["Monto"] != 0]
-    tabla = tabla[tabla["Promotor"].notna()]
+    trabajo = tabla.copy()
+    if "Promotoria" not in trabajo.columns:
+        trabajo["Promotoria"] = trabajo.get("Promotor")
+    if "Promotor" not in trabajo.columns:
+        trabajo["Promotor"] = trabajo.get("Promotoria")
+    for col in COLUMNAS_DATOS:
+        if col not in trabajo.columns:
+            trabajo[col] = None
+    trabajo["Monto"] = pd.to_numeric(trabajo["Monto"], errors="coerce").fillna(0)
+    trabajo["Año"] = trabajo["Año"].map(_a_entero)
+    trabajo["Mes"] = trabajo["Mes"].map(_mes_numero)
+    trabajo["Promotor"] = trabajo["Promotor"].map(_promotor)
+    trabajo["Promotoria"] = trabajo["Promotoria"].map(_promotor)
+    trabajo["Clave"] = trabajo["Clave"].map(_promotor)
+    return trabajo[COLUMNAS_DATOS]
+
+
+def _filas(registros, agrupar=True, exigir_promotor=True):
+    if registros is None:
+        return pd.DataFrame(columns=COLUMNAS_DATOS)
+    if isinstance(registros, pd.DataFrame):
+        if registros.empty:
+            return pd.DataFrame(columns=COLUMNAS_DATOS)
+        tabla = _completar_columnas(registros)
+    else:
+        if not registros:
+            return pd.DataFrame(columns=COLUMNAS_DATOS)
+        tabla = _completar_columnas(pd.DataFrame(registros))
+    if agrupar:
+        tabla = tabla[tabla["Monto"] != 0]
     tabla = tabla[tabla["Año"].notna() & tabla["Mes"].notna()]
+    if exigir_promotor:
+        tabla = tabla[tabla["Promotoria"].notna() | tabla["Promotor"].notna()]
     if tabla.empty:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
-    return (
-        tabla.groupby(
-            ["Año", "Mes", "Promotor", "Concepto", "Ramo", "Ini_Ren"],
-            dropna=False,
-            as_index=False,
-        )["Monto"]
-        .sum()
-    )
+    if not agrupar:
+        return tabla.reset_index(drop=True)
+    claves = [
+        "Año",
+        "Mes",
+        "Conducto",
+        "Promotor",
+        "Clave",
+        "Promotoria",
+        "Concepto",
+        "Ramo",
+        "Ini_Ren",
+    ]
+    return tabla.groupby(claves, dropna=False, as_index=False)["Monto"].sum()
 
 
 def _hojas(ruta):
@@ -173,7 +211,12 @@ def leer_datos_existente(ruta):
                 {
                     "Año": df[columnas["AÑO"]].map(_a_entero),
                     "Mes": df[columnas["MES"]].map(_mes_numero),
+                    "Conducto": df[columnas["CONDUCTO"]] if "CONDUCTO" in columnas else None,
                     "Promotor": df[columnas["PROMOTOR"]].map(_promotor),
+                    "Clave": df[columnas["CLAVE"]].map(_promotor) if "CLAVE" in columnas else None,
+                    "Promotoria": df[
+                        columnas.get("PROMOTORIA", columnas["PROMOTOR"])
+                    ].map(_promotor),
                     "Concepto": df[columnas["CONCEPTO"]].map(
                         lambda valor: str(valor).strip().upper()
                     ),
@@ -186,12 +229,11 @@ def leer_datos_existente(ruta):
                     "Monto": pd.to_numeric(df[columnas["MONTO"]], errors="coerce"),
                 }
             )
-            return _filas(trabajo.to_dict("records"))
+            return _filas(trabajo, agrupar=False, exigir_promotor=False)
     return pd.DataFrame(columns=COLUMNAS_DATOS)
 
 
 def extraer_comision_base(ruta, anio):
-    registros = []
     try:
         hojas = [
             hoja
@@ -202,32 +244,41 @@ def extraer_comision_base(ruta, anio):
         return pd.DataFrame(columns=COLUMNAS_DATOS)
     if not hojas:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
+    bloques = []
     for hoja in hojas:
         df = pd.read_excel(ruta, sheet_name=hoja)
         if df.empty:
             continue
         columnas = {_norm_nombre(col): col for col in df.columns}
-        if "PROMOTORIA" not in columnas or "COMISION" not in columnas:
+        if "COMISION" not in columnas:
             continue
-        for _, fila in df.iterrows():
-            ini = _ini_tabla(fila.get(columnas.get("TIPO COMISION")))
-            if not ini:
-                continue
-            ramo = _ramo(fila.get(columnas.get("TIPO"), ""))
-            if not ramo:
-                continue
-            registros.append(
-                {
-                    "Año": anio,
-                    "Mes": _mes_numero(fila.get(columnas.get("MES"))),
-                    "Promotor": _promotor(fila.get(columnas["PROMOTORIA"])),
-                    "Concepto": CONCEPTO_COMISION,
-                    "Ramo": ramo,
-                    "Ini_Ren": ini,
-                    "Monto": fila.get(columnas["COMISION"]),
-                }
-            )
-    return _filas(registros)
+        col_tipo_com = columnas.get("TIPO COMISION")
+        col_tipo = columnas.get("TIPO")
+        col_promotor = columnas.get("PROMOTOR")
+        col_promotoria = columnas.get("PROMOTORIA")
+        col_clave = columnas.get("CLAVE")
+        col_conducto = columnas.get("CONDUCTO")
+        col_mes = columnas.get("MES")
+        trabajo = pd.DataFrame(
+            {
+                "Año": anio,
+                "Mes": df[col_mes].map(_mes_numero) if col_mes else None,
+                "Conducto": df[col_conducto] if col_conducto else None,
+                "Promotor": df[col_promotor].map(_promotor) if col_promotor else None,
+                "Clave": df[col_clave].map(_promotor) if col_clave else None,
+                "Promotoria": (
+                    df[col_promotoria].map(_promotor) if col_promotoria else None
+                ),
+                "Concepto": CONCEPTO_COMISION,
+                "Ramo": df[col_tipo].map(_ramo) if col_tipo else None,
+                "Ini_Ren": df[col_tipo_com].map(_ini_tabla) if col_tipo_com else None,
+                "Monto": df[columnas["COMISION"]],
+            }
+        )
+        bloques.append(trabajo)
+    if not bloques:
+        return pd.DataFrame(columns=COLUMNAS_DATOS)
+    return _filas(pd.concat(bloques, ignore_index=True), agrupar=False, exigir_promotor=False)
 
 
 def extraer_bonos(ruta, anio):
@@ -289,11 +340,13 @@ def extraer_bonos(ruta, anio):
                 mes = int(fecha.month)
         if mes is None and col_mes:
             mes = _mes_numero(fila.get(col_mes))
+        clave_prom = _promotor(fila.get(col_prom))
         registros.append(
             {
                 "Año": anio_fila,
                 "Mes": mes,
-                "Promotor": _promotor(fila.get(col_prom)),
+                "Promotor": clave_prom,
+                "Promotoria": clave_prom,
                 "Concepto": concepto,
                 "Ramo": ramo,
                 "Ini_Ren": ini,
@@ -332,11 +385,13 @@ def extraer_anp(ruta):
         ramo = _ramo(fila.get(col_ramo))
         if not ramo:
             continue
+        clave_prom = _promotor(fila.get(col_prom))
         registros.append(
             {
                 "Año": _a_entero(fila.get(col_anio)),
                 "Mes": _mes_numero(fila.get(col_mes)),
-                "Promotor": _promotor(fila.get(col_prom)),
+                "Promotor": clave_prom,
+                "Promotoria": clave_prom,
                 "Concepto": CONCEPTO_ANP,
                 "Ramo": ramo,
                 "Ini_Ren": None,
@@ -406,6 +461,7 @@ def extraer_primas(ruta):
                         "Año": anio,
                         "Mes": mes,
                         "Promotor": promotor,
+                        "Promotoria": promotor,
                         "Concepto": CONCEPTO_PRIMA,
                         "Ramo": ramo,
                         "Ini_Ren": ini,
@@ -428,7 +484,7 @@ def extraer_paquete(ruta, anio, actualizar_estado=None):
     partes = [parte for parte in partes if parte is not None and not parte.empty]
     if not partes:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
-    return _filas(pd.concat(partes, ignore_index=True).to_dict("records"))
+    return _completar_columnas(pd.concat(partes, ignore_index=True))
 
 
 def consolidar_datos(paquetes, actualizar_estado=None):
@@ -440,4 +496,4 @@ def consolidar_datos(paquetes, actualizar_estado=None):
     partes = [parte for parte in partes if not parte.empty]
     if not partes:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
-    return _filas(pd.concat(partes, ignore_index=True).to_dict("records"))
+    return _completar_columnas(pd.concat(partes, ignore_index=True))
