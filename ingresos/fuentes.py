@@ -24,6 +24,7 @@ COLUMNAS_DATOS = [
     "Ramo",
     "Ini_Ren",
     "Monto",
+    "Fuente",
 ]
 
 CONCEPTO_ANP = "ANP"
@@ -64,13 +65,13 @@ MESES_NUM = {
 }
 
 MAPA_PRIMAS = (
-    ("VIDA PRIMER AÑO", "VIDA", INI_PRIMER),
-    ("VIDA RENOV", "VIDA", INI_RENOV),
-    ("GMM PRIMER AÑO", "GMM", INI_PRIMER),
-    ("GMM RENOV", "GMM", INI_RENOV),
-    ("PRIMORDIAL 1ER", "GMM", INI_PRIMER),
-    ("PRIMORDIAL RENOV", "GMM", INI_RENOV),
     ("METPLUS", "GMM", INI_PRIMER),
+    ("PRIMORDIAL1ER", "GMM", INI_PRIMER),
+    ("PRIMORDIALRENOV", "GMM", INI_RENOV),
+    ("GMMPRIMER", "GMM", INI_PRIMER),
+    ("GMMRENOV", "GMM", INI_RENOV),
+    ("VIDAPRIMER", "VIDA", INI_PRIMER),
+    ("VIDARENOV", "VIDA", INI_RENOV),
 )
 
 
@@ -187,6 +188,7 @@ def _filas(registros, agrupar=True, exigir_promotor=True):
         "Concepto",
         "Ramo",
         "Ini_Ren",
+        "Fuente",
     ]
     return tabla.groupby(claves, dropna=False, as_index=False)["Monto"].sum()
 
@@ -287,6 +289,7 @@ def extraer_comision_base(ruta, anio):
                 "Ramo": df[col_tipo].map(_ramo) if col_tipo else None,
                 "Ini_Ren": df[col_tipo_com].map(_ini_tabla) if col_tipo_com else None,
                 "Monto": df[columnas["COMISION"]],
+                "Fuente": "Comision Base",
             }
         )
         if col_conducto:
@@ -372,6 +375,7 @@ def extraer_bonos(ruta, anio):
                 "Ramo": ramo,
                 "Ini_Ren": ini,
                 "Monto": fila.get(col_importe),
+                "Fuente": "Pagos_de_Bonos",
             }
         )
     return _filas(registros)
@@ -417,24 +421,33 @@ def extraer_anp(ruta):
                 "Ramo": ramo,
                 "Ini_Ren": None,
                 "Monto": fila.get(col_monto),
+                "Fuente": "ANP",
             }
         )
     return _filas(registros)
 
 
-def _mapear_titulo_prima(titulo):
+def _clave_titulo(titulo):
     texto = _norm_nombre(titulo)
+    for sep in (" ", "-", "_", ".", "/"):
+        texto = texto.replace(sep, "")
+    return texto
+
+
+def _mapear_titulo_prima(titulo):
+    clave = _clave_titulo(titulo)
     for fragmento, ramo, ini in MAPA_PRIMAS:
-        if fragmento in texto:
+        if fragmento in clave:
             return ramo, ini
-    ramo = "GMM" if "GMM" in texto or "PRIMORDIAL" in texto or "METPLUS" in texto else None
-    if "VIDA" in texto:
-        ramo = "VIDA"
-    if not ramo:
-        return None
-    if "RENOV" in texto:
-        return ramo, INI_RENOV
-    return ramo, INI_PRIMER
+    if "METPLUS" in clave:
+        return "GMM", INI_PRIMER
+    if "PRIMORDIAL" in clave:
+        return "GMM", INI_RENOV if "RENOV" in clave else INI_PRIMER
+    if "GMM" in clave:
+        return "GMM", INI_RENOV if "RENOV" in clave else INI_PRIMER
+    if "VIDA" in clave:
+        return "VIDA", INI_RENOV if "RENOV" in clave else INI_PRIMER
+    return None
 
 
 def extraer_primas(ruta):
@@ -487,6 +500,7 @@ def extraer_primas(ruta):
                         "Ramo": ramo,
                         "Ini_Ren": ini,
                         "Monto": fila[col_mes],
+                        "Fuente": str(titulo).strip() if titulo else "Bases PP",
                     }
                 )
     return _filas(registros)

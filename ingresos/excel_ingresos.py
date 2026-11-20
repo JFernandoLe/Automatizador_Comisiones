@@ -254,7 +254,7 @@ def _escribir_datos(wb, df):
     ws = wb.create_sheet("Datos", 2)
     ws.append(list(COLUMNAS_DATOS))
     if df is None or df.empty:
-        ws.append([0, 1, None, "TOTAL", None, "TOTAL", "ANP", "VIDA", None, 0])
+        ws.append([0, 1, None, "TOTAL", None, "TOTAL", "ANP", "VIDA", None, 0, None])
         ultima = 2
     else:
         trabajo = df[COLUMNAS_DATOS].copy()
@@ -265,8 +265,8 @@ def _escribir_datos(wb, df):
     tabla = Table(displayName="Datos", ref=f"A1:{letra}{ultima}")
     tabla.tableStyleInfo = TableStyleInfo(name="TableStyleMedium9", showRowStripes=True)
     ws.add_table(tabla)
-    anchos = (10, 8, 12, 14, 14, 14, 14, 10, 16, 16)
-    for letra_col, ancho in zip("ABCDEFGHIJ", anchos):
+    anchos = (10, 8, 12, 14, 14, 14, 14, 10, 16, 16, 22)
+    for letra_col, ancho in zip("ABCDEFGHIJK", anchos):
         ws.column_dimensions[letra_col].width = ancho
 
 
