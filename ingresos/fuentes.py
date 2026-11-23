@@ -113,6 +113,34 @@ def _ramo(valor):
     return None
 
 
+def _es_columna_ramo(nombre):
+    compacto = _norm_nombre(nombre).replace(".", "").replace(" ", "").replace("_", "")
+    if compacto == "RAMOCLASIF":
+        return True
+    if compacto == "RAMO":
+        return True
+    return compacto.startswith("RAMO") and compacto[4:].isdigit()
+
+
+def _columna_ramo_catalogo(df):
+    """Ramo de la derecha: 1Vida / 2GMM (no el 101/300 original)."""
+    candidatas = [col for col in df.columns if _es_columna_ramo(col)]
+    if not candidatas:
+        return None
+
+    def puntos(col):
+        muestra = df[col].dropna().astype(str).head(400).map(_norm_nombre)
+        catalogo = int(muestra.str.contains("1VIDA|2GMM", regex=True).sum())
+        texto = int(muestra.str.contains("VIDA|GMM", regex=True).sum())
+        return (catalogo, texto)
+
+    ordenadas = sorted(
+        candidatas,
+        key=lambda col: (puntos(col), candidatas.index(col)),
+    )
+    return ordenadas[-1]
+
+
 def _ini_tabla(valor):
     texto = _norm_nombre(valor)
     if "OTRO" in texto:
@@ -268,6 +296,12 @@ def extraer_comision_base(ruta, anio):
         columnas = {_norm_nombre(col): col for col in df.columns}
         if "COMISION" not in columnas:
             continue
+        nombre_hoja = _norm_nombre(hoja)
+        anio_hoja = (int(anio) - 1) if "ANTERIOR" in nombre_hoja and anio else anio
+        if "AÑO" in columnas:
+            anios_col = df[columnas["AÑO"]].map(_a_entero)
+        else:
+            anios_col = anio_hoja
         col_tipo_com = columnas.get("TIPO COMISION")
         col_tipo = columnas.get("TIPO")
         col_promotor = columnas.get("PROMOTOR")
@@ -277,7 +311,7 @@ def extraer_comision_base(ruta, anio):
         col_mes = columnas.get("MES")
         trabajo = pd.DataFrame(
             {
-                "Año": anio,
+                "Año": anios_col,
                 "Mes": df[col_mes].map(_mes_numero) if col_mes else None,
                 "Conducto": df[col_conducto] if col_conducto else None,
                 "Promotor": df[col_promotor].map(_promotor) if col_promotor else None,
@@ -312,7 +346,7 @@ def extraer_bonos(ruta, anio):
     if not col_prom or not col_importe:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
     col_ini = columnas.get("INI_REN")
-    col_ramo = columnas.get("RAMO") or columnas.get("RAMO_CLASIF")
+    col_ramo = _columna_ramo_catalogo(df)
     col_clasif = columnas.get("NUEVA CLASIF")
     col_desc = None
     for nombre, col in columnas.items():

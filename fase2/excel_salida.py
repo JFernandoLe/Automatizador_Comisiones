@@ -243,7 +243,9 @@ def _escribir_pagos_bonos(wb, df, combinaciones=None):
     )
 
 
-def _escribir_comision_base(wb, df, limite_filas=EXCEL_MAX_ROWS):
+def _escribir_comision_base(
+    wb, df, limite_filas=EXCEL_MAX_ROWS, nombre_base="Comision Base"
+):
     if df is None or df.empty:
         tabla = pd.DataFrame(columns=COLUMNAS_COMISION_BASE)
     else:
@@ -267,9 +269,9 @@ def _escribir_comision_base(wb, df, limite_filas=EXCEL_MAX_ROWS):
         inicio = indice_hoja * limite_filas
         fin = min((indice_hoja + 1) * limite_filas, total)
         nombre = (
-            "Comision Base"
+            nombre_base
             if n_hojas == 1
-            else f"Comision Base {indice_hoja + 1}"
+            else f"{nombre_base} {indice_hoja + 1}"
         )
         ws = wb.create_sheet(nombre)
         ws.append(columnas)
@@ -288,7 +290,13 @@ def _escribir_comision_base(wb, df, limite_filas=EXCEL_MAX_ROWS):
 
 
 def guardar_comision(
-    df_vida, df_gmm, df_bonos, ruta="Comision.xlsx", combinaciones=None, df_base=None
+    df_vida,
+    df_gmm,
+    df_bonos,
+    ruta="Comision.xlsx",
+    combinaciones=None,
+    df_base=None,
+    df_base_anterior=None,
 ):
     wb = Workbook()
     ws = wb.active
@@ -313,6 +321,10 @@ def guardar_comision(
         ws.column_dimensions[col].width = ancho
 
     _escribir_comision_base(wb, df_base)
+    if df_base_anterior is not None and not df_base_anterior.empty:
+        _escribir_comision_base(
+            wb, df_base_anterior, nombre_base="Comision Base Anterior"
+        )
     _escribir_pagos_bonos(wb, df_bonos, combinaciones=combinaciones)
     wb.save(ruta)
     return ruta

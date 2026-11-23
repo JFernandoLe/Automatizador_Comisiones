@@ -4,6 +4,7 @@ import pandas as pd
 
 from fase2.excel_salida import guardar_comision
 from fase2.transformaciones import (
+    COLUMNAS_COMISION_BASE,
     construir_comision_base,
     construir_pagos_bonos,
     construir_tabla_gmm,
@@ -11,8 +12,9 @@ from fase2.transformaciones import (
     crear_clasif_map,
     crear_dist_map,
     crear_pfpm_map,
+    _norm_nombre,
 )
-from servicios.excel import leer_hojas_seleccionadas
+from servicios.excel import leer_hojas_seleccionadas, obtener_hojas
 
 
 def _avisar(actualizar_estado, texto, progreso):
@@ -78,6 +80,59 @@ def leer_bonos(ruta, hojas):
     return leer_hojas_seleccionadas(ruta, hojas, header=1)
 
 
+def _mapear_columnas_comision_base(df):
+    columnas = {_norm_nombre(col): col for col in df.columns}
+    mapeo = {}
+    for destino in COLUMNAS_COMISION_BASE:
+        origen = columnas.get(_norm_nombre(destino))
+        if origen is None:
+            return None
+        mapeo[destino] = origen
+    return df.rename(columns={origen: destino for destino, origen in mapeo.items()})[
+        COLUMNAS_COMISION_BASE
+    ]
+
+
+def leer_comision_base_externa(ruta, hojas=None):
+    if not ruta:
+        return None
+    try:
+        disponibles = obtener_hojas(ruta)
+    except Exception as error:
+        raise ValueError(
+            f"No se pudo leer la Base de comisiones del año anterior: {error}"
+        ) from error
+    if not disponibles:
+        raise ValueError("La Base de comisiones del año anterior no tiene hojas.")
+    if hojas:
+        candidatas = [hoja for hoja in hojas if hoja in disponibles]
+    else:
+        candidatas = [
+            hoja
+            for hoja in disponibles
+            if _norm_nombre(hoja).startswith("COMISION BASE")
+            and "ANTERIOR" not in _norm_nombre(hoja)
+        ]
+        if not candidatas:
+            candidatas = list(disponibles)
+    bloques = []
+    for hoja in candidatas:
+        df = pd.read_excel(ruta, sheet_name=hoja)
+        if df is None or df.empty:
+            continue
+        tabla = _mapear_columnas_comision_base(df)
+        if tabla is None or tabla.empty:
+            continue
+        bloques.append(tabla)
+    if not bloques:
+        raise ValueError(
+            "La Base de comisiones del año anterior no tiene la hoja "
+            "Comision Base (Conducto, Mes, TIPO COMISIÓN, Tipo, PROMOTOR, "
+            "CLAVE, COMISION, PROMOTORIA)."
+        )
+    return pd.concat(bloques, ignore_index=True)
+
+
 def cargar_clasificaciones(ruta, hojas):
     if not ruta:
         raise ValueError("Debe seleccionar el Catálogo de clasificaciones.")
@@ -105,6 +160,10 @@ def generar_comision_fase2(
     combinaciones=None,
     actualizar_estado=None,
     ruta_salida="Comision.xlsx",
+    ruta_bonos_anterior=None,
+    hojas_bonos_anterior=None,
+    ruta_comision_anterior=None,
+    hojas_comision_anterior=None,
 ):
     _avisar(actualizar_estado, "Leyendo Reporte VIDA Final...", 6)
     df_vida = leer_reporte(ruta_vida, hojas_vida)
@@ -116,6 +175,10 @@ def generar_comision_fase2(
     pfpm_map = cargar_pfpm(ruta_catalogos, hojas_catalogos)
     _avisar(actualizar_estado, "Leyendo archivo Bonos...", 42)
     df_bonos = leer_bonos(ruta_bonos, hojas_bonos)
+    df_bonos_anterior = None
+    if ruta_bonos_anterior:
+        _avisar(actualizar_estado, "Leyendo Bonos del año anterior...", 47)
+        df_bonos_anterior = leer_bonos(ruta_bonos_anterior, hojas_bonos_anterior)
     _avisar(actualizar_estado, "Leyendo Catálogo de clasificaciones...", 52)
     clasif_map = cargar_clasificaciones(ruta_clasif, hojas_clasif)
 
@@ -125,8 +188,19 @@ def generar_comision_fase2(
     tabla_gmm = construir_tabla_gmm(df_gmm, dist_map, pfpm_map)
     _avisar(actualizar_estado, "Construyendo Comisión Base...", 78)
     tabla_base = construir_comision_base(df_vida, df_gmm, dist_map, pfpm_map)
+    tabla_base_anterior = None
+    if ruta_comision_anterior:
+        _avisar(actualizar_estado, "Leyendo Comision Base del año anterior...", 81)
+        tabla_base_anterior = leer_comision_base_externa(
+            ruta_comision_anterior, hojas_comision_anterior
+        )
     _avisar(actualizar_estado, "Procesando Pagos de Bonos...", 84)
     tabla_bonos = construir_pagos_bonos(df_bonos, dist_map, pfpm_map, clasif_map)
+    if df_bonos_anterior is not None and not df_bonos_anterior.empty:
+        tabla_bonos_ant = construir_pagos_bonos(
+            df_bonos_anterior, dist_map, pfpm_map, clasif_map
+        )
+        tabla_bonos = pd.concat([tabla_bonos, tabla_bonos_ant], ignore_index=True)
 
     _avisar(actualizar_estado, "Generando Comision.xlsx...", 93)
     ruta = guardar_comision(
@@ -136,6 +210,7 @@ def generar_comision_fase2(
         ruta_salida,
         combinaciones=combinaciones,
         df_base=tabla_base,
+        df_base_anterior=tabla_base_anterior,
     )
     _avisar(actualizar_estado, "Fase 2 generada", 100)
     print(

@@ -94,6 +94,8 @@ class VentanaPrincipal:
             "dist": None,
             "catalogos": None,
             "bonos": None,
+            "bonos_anterior": None,
+            "comision_anterior": None,
             "clasif": None,
         }
         self.checks_f2_vida = []
@@ -101,6 +103,8 @@ class VentanaPrincipal:
         self.checks_f2_dist = []
         self.checks_f2_catalogos = []
         self.checks_f2_bonos = []
+        self.checks_f2_bonos_anterior = []
+        self.checks_f2_comision_anterior = []
         self.checks_f2_clasif = []
         self.checks_f2_figuras = []
         self.checks_f2_ramos = []
@@ -114,10 +118,12 @@ class VentanaPrincipal:
         self.pp_extra_seq = {"actual": 0, "anterior": 0}
         self.pp_frames_extras = {}
         self.archivos_anp = []
+        self.archivos_anp_anterior = []
         self.archivos_ingresos = {"actual": None, "anterior": None, "dos": None}
         self.anio_ingresos = tk.IntVar(value=datetime.now().year)
         self.mes_corte_ingresos = tk.IntVar(value=datetime.now().month)
         self.checks_anp = []
+        self.checks_anp_anterior = []
         self.incluir_subcarpetas_anp = tk.BooleanVar(value=True)
         self._ultimo_periodo_anp = (
             datetime.now().year,
@@ -531,9 +537,10 @@ class VentanaPrincipal:
             cuerpo,
             text=(
                 "Usa los reportes finales de la Fase 1, Distribución Comercial, "
-                "catálogos y Bonos. Puede ejecutarse sin repetir la Fase 1 si "
-                "esos reportes ya existen. El resultado se guarda como Comision.xlsx "
-                "con la hoja Pagos_de_Bonos."
+                "catálogos y Bonos. Pida también Bonos y Comision Base del año "
+                "anterior (esta primera corrida no hay CommiFlow del año pasado). "
+                "El resultado se guarda como Comision.xlsx con Pagos_de_Bonos y "
+                "Comision Base (actual y anterior)."
             ),
             style="Muted.TLabel",
             wraplength=900,
@@ -591,9 +598,30 @@ class VentanaPrincipal:
             contenido,
             "Bonos",
             lambda: self._seleccionar_archivo_fase2("bonos"),
-            ayuda="Excel. Encabezados en la fila 2; los datos empiezan en la fila 3.",
+            ayuda="Excel del año actual. Encabezados en la fila 2; los datos empiezan en la fila 3.",
         )
         self.frame_f2_bonos_hojas = self._marco_hojas(contenido, "Hojas de Bonos")
+
+        self.entrada_f2_bonos_anterior = crear_selector_archivo(
+            contenido,
+            "Bonos del año anterior",
+            lambda: self._seleccionar_archivo_fase2("bonos_anterior"),
+            ayuda="Mismo layout que Bonos. Se procesa con Dist, PFPM y el catálogo actuales.",
+        )
+        self.frame_f2_bonos_anterior_hojas = self._marco_hojas(
+            contenido, "Hojas de Bonos del año anterior"
+        )
+
+        self.entrada_f2_comision_anterior = crear_selector_archivo(
+            contenido,
+            "Base de comisiones del año anterior",
+            lambda: self._seleccionar_archivo_fase2("comision_anterior"),
+            ayuda="Excel con la misma estructura que Comision Base de CommiFlow "
+            "(Conducto, Mes, TIPO COMISIÓN, Tipo, PROMOTOR, CLAVE, COMISION, PROMOTORIA).",
+        )
+        self.frame_f2_comision_anterior_hojas = self._marco_hojas(
+            contenido, "Hojas de Comision Base del año anterior"
+        )
 
         self.entrada_f2_clasif = crear_selector_archivo(
             contenido,
@@ -1049,10 +1077,11 @@ class VentanaPrincipal:
         ttk.Label(
             cuerpo,
             text=(
-                "Etapa final independiente. Lee Excel de Detalle pagado, arma la "
-                "tabla dinámica Promotor × Mes × Ramo (suma de PNA: GMM y Vida) "
-                "y al generar le pregunta dónde guardar Base ANP.xlsx. El mes "
-                "sale de F. Pago; si no se detecta la columna, se pide a mano."
+                "Etapa final independiente. Lee Excel de Detalle pagado del año "
+                "actual y del anterior, arma la tabla dinámica Promotor × Mes × "
+                "Ramo (suma de PNA: GMM y Vida) y al generar le pregunta dónde "
+                "guardar Base ANP.xlsx. El mes sale de F. Pago; si no se detecta "
+                "la columna, se pide a mano."
             ),
             style="Muted.TLabel",
             wraplength=900,
@@ -1063,19 +1092,29 @@ class VentanaPrincipal:
         )
         self.entrada_anp = crear_selector_multiples(
             contenido,
-            "Excel de Detalle pagado",
-            lambda: self._seleccionar_archivos_anp(),
-            lambda: self._seleccionar_carpeta_anp(),
+            "Excel de Detalle pagado (año actual)",
+            lambda: self._seleccionar_archivos_anp("actual"),
+            lambda: self._seleccionar_carpeta_anp("actual"),
             ayuda="Uno o varios Excel (.xlsx, .xls, .xlsm o .xlsb), o una carpeta.",
+        )
+        self.frame_anp_hojas = self._marco_hojas(
+            contenido, "Hojas del año actual (si no existe 'Detalle pagado')"
+        )
+        self.entrada_anp_anterior = crear_selector_multiples(
+            contenido,
+            "Excel de Detalle pagado (año anterior)",
+            lambda: self._seleccionar_archivos_anp("anterior"),
+            lambda: self._seleccionar_carpeta_anp("anterior"),
+            ayuda="Mismos Excel de Detalle pagado, del año pasado.",
+        )
+        self.frame_anp_hojas_anterior = self._marco_hojas(
+            contenido, "Hojas del año anterior (si no existe 'Detalle pagado')"
         )
         ttk.Checkbutton(
             contenido,
             text="Incluir subcarpetas",
             variable=self.incluir_subcarpetas_anp,
         ).pack(anchor="w", padx=32, pady=(0, 8))
-        self.frame_anp_hojas = self._marco_hojas(
-            contenido, "Hojas (si no existe 'Detalle pagado')"
-        )
 
         boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
         boton_frame.pack(pady=(24, 36))
@@ -1108,7 +1147,7 @@ class VentanaPrincipal:
             else None,
         )
 
-    def _seleccionar_archivos_anp(self):
+    def _seleccionar_archivos_anp(self, periodo="actual"):
         seleccion = filedialog.askopenfilenames(
             filetypes=[
                 ("Excel", "*.xlsx *.xls *.xlsm *.xlsb"),
@@ -1117,9 +1156,9 @@ class VentanaPrincipal:
         )
         if not seleccion:
             return
-        self._asignar_archivos_anp(list(seleccion))
+        self._asignar_archivos_anp(list(seleccion), periodo=periodo)
 
-    def _seleccionar_carpeta_anp(self):
+    def _seleccionar_carpeta_anp(self, periodo="actual"):
         carpeta = filedialog.askdirectory()
         if not carpeta:
             return
@@ -1132,27 +1171,51 @@ class VentanaPrincipal:
                 "La carpeta no contiene Excel .xlsx, .xls, .xlsm o .xlsb.",
             )
             return
-        self._asignar_archivos_anp(archivos)
+        self._asignar_archivos_anp(archivos, periodo=periodo)
 
-    def _asignar_archivos_anp(self, archivos):
-        self.archivos_anp = archivos
-        reemplazar_texto(self.entrada_anp, self._texto_seleccion(archivos))
+    def _asignar_archivos_anp(self, archivos, periodo="actual"):
+        if periodo == "anterior":
+            self.archivos_anp_anterior = archivos
+            entrada = self.entrada_anp_anterior
+            frame = self.frame_anp_hojas_anterior
+            attr_checks = "checks_anp_anterior"
+        else:
+            self.archivos_anp = archivos
+            entrada = self.entrada_anp
+            frame = self.frame_anp_hojas
+            attr_checks = "checks_anp"
+        reemplazar_texto(entrada, self._texto_seleccion(archivos))
         if len(archivos) == 1:
             hojas = obtener_hojas(archivos[0])
         else:
             hojas = obtener_hojas_union(archivos)
         if not hojas:
-            self._mensaje_hojas(self.frame_anp_hojas, "Los archivos no contienen hojas.")
-            self.checks_anp = []
+            self._mensaje_hojas(frame, "Los archivos no contienen hojas.")
+            setattr(self, attr_checks, [])
             return
-        self.checks_anp = llenar_checks(self.frame_anp_hojas, hojas)
+        checks = llenar_checks(frame, hojas)
+        setattr(self, attr_checks, checks)
         hay_detalle = False
-        for hoja, variable in self.checks_anp:
+        for hoja, variable in checks:
             es_detalle = hoja.strip().lower() == "detalle pagado"
             variable.set(es_detalle)
             hay_detalle = hay_detalle or es_detalle
-        if not hay_detalle and len(self.checks_anp) == 1:
-            self.checks_anp[0][1].set(True)
+        if not hay_detalle and len(checks) == 1:
+            checks[0][1].set(True)
+
+    def _archivos_anp_todos(self):
+        return list(self.archivos_anp) + list(self.archivos_anp_anterior)
+
+    def _hojas_anp_todas(self):
+        hojas = [hoja for hoja, variable in self.checks_anp if variable.get()]
+        hojas += [
+            hoja for hoja, variable in self.checks_anp_anterior if variable.get()
+        ]
+        vistas = []
+        for hoja in hojas:
+            if hoja not in vistas:
+                vistas.append(hoja)
+        return vistas
 
     def _dialogo_columna_anp(self, nombre_archivo, columnas, etiqueta):
         ventana = tk.Toplevel(self.root)
@@ -1311,7 +1374,7 @@ class VentanaPrincipal:
             (
                 "2",
                 "Comisiones y Bonos",
-                "Usa el reporte interno y genera Comisión y Pagos de Bonos.",
+                "Usa el reporte interno, Bonos de ambos años y Comision Base del año anterior.",
             ),
             (
                 "3",
@@ -1321,7 +1384,7 @@ class VentanaPrincipal:
             (
                 "4",
                 "Base ANP",
-                "Genera el resumen y el detalle de Detalle pagado.",
+                "Genera el resumen y el detalle de Detalle pagado del año actual y anterior.",
             ),
             (
                 "5",
@@ -1391,9 +1454,11 @@ class VentanaPrincipal:
             cuerpo,
             text=(
                 "Arma el Excel final con filtro por promotor o TOTAL. "
-                "El año actual sale de CommiFlow (Comisión, Primas, ANP y Bonos). "
-                "Los años que CommiFlow no genera se cargan como Excel externo "
-                "con las mismas hojas. Las cifras de las tablas están en MDP."
+                "El Excel del año actual (CommiFlow) ya puede traer el año anterior "
+                "en ANP, Bonos y Comision Base Anterior; si es así, deje vacíos "
+                "los otros recuadros. A partir del próximo año use "
+                "CommiFlow_mes_año.xlsx del corte equivalente como año anterior. "
+                "Las cifras de las tablas están en MDP."
             ),
             style="Muted.TLabel",
             wraplength=900,
@@ -2150,6 +2215,8 @@ class VentanaPrincipal:
             "dist": self.entrada_f2_dist,
             "catalogos": self.entrada_f2_catalogos,
             "bonos": self.entrada_f2_bonos,
+            "bonos_anterior": self.entrada_f2_bonos_anterior,
+            "comision_anterior": self.entrada_f2_comision_anterior,
             "clasif": self.entrada_f2_clasif,
         }
         reemplazar_texto(entradas[clave], archivo)
@@ -2160,6 +2227,14 @@ class VentanaPrincipal:
             "dist": ("frame_f2_dist_hojas", "checks_f2_dist"),
             "catalogos": ("frame_f2_catalogos_hojas", "checks_f2_catalogos"),
             "bonos": ("frame_f2_bonos_hojas", "checks_f2_bonos"),
+            "bonos_anterior": (
+                "frame_f2_bonos_anterior_hojas",
+                "checks_f2_bonos_anterior",
+            ),
+            "comision_anterior": (
+                "frame_f2_comision_anterior_hojas",
+                "checks_f2_comision_anterior",
+            ),
             "clasif": ("frame_f2_clasif_hojas", "checks_f2_clasif"),
         }
         frame_attr, checks_attr = frames[clave]
@@ -2179,6 +2254,14 @@ class VentanaPrincipal:
             "dist": ("frame_f2_dist_hojas", "checks_f2_dist"),
             "catalogos": ("frame_f2_catalogos_hojas", "checks_f2_catalogos"),
             "bonos": ("frame_f2_bonos_hojas", "checks_f2_bonos"),
+            "bonos_anterior": (
+                "frame_f2_bonos_anterior_hojas",
+                "checks_f2_bonos_anterior",
+            ),
+            "comision_anterior": (
+                "frame_f2_comision_anterior_hojas",
+                "checks_f2_comision_anterior",
+            ),
             "clasif": ("frame_f2_clasif_hojas", "checks_f2_clasif"),
         }
         frame_attr, checks_attr = pares[clave]
@@ -2187,27 +2270,62 @@ class VentanaPrincipal:
             self._mensaje_hojas(frame, "El archivo no contiene hojas.")
             setattr(self, checks_attr, [])
             return
-        setattr(self, checks_attr, llenar_checks(frame, hojas))
+        checks = llenar_checks(frame, hojas)
+        setattr(self, checks_attr, checks)
+        if clave == "comision_anterior":
+            hay = False
+            for hoja, variable in checks:
+                nombre = str(hoja).strip().upper()
+                marcar = nombre.startswith("COMISION BASE") and "ANTERIOR" not in nombre
+                variable.set(marcar)
+                hay = hay or marcar
+            if not hay and len(checks) == 1:
+                checks[0][1].set(True)
 
-    def _hojas_fase2(self, clave):
+    def _hojas_fase2(self, clave, opcional=False):
         nombres = {
             "vida": ("Reporte VIDA Final", self.checks_f2_vida),
             "gmm": ("Reporte GMM Final", self.checks_f2_gmm),
             "dist": ("Distribución Comercial", self.checks_f2_dist),
             "catalogos": ("Catálogos", self.checks_f2_catalogos),
             "bonos": ("Bonos", self.checks_f2_bonos),
+            "bonos_anterior": ("Bonos del año anterior", self.checks_f2_bonos_anterior),
+            "comision_anterior": (
+                "Base de comisiones del año anterior",
+                self.checks_f2_comision_anterior,
+            ),
             "clasif": ("Catálogo de clasificaciones", self.checks_f2_clasif),
         }
         nombre, checks = nombres[clave]
         archivo = self.archivos_fase2.get(clave)
-        if archivo and Path(archivo).suffix.lower() == ".parquet":
+        if not archivo:
+            if opcional:
+                return None
+            raise ValueError(f"Debe seleccionar el archivo de {nombre}.")
+        if Path(archivo).suffix.lower() == ".parquet":
             return None
         hojas = [hoja for hoja, variable in checks if variable.get()]
         if not hojas:
+            if opcional:
+                return None
             raise ValueError(f"Debe seleccionar al menos una hoja de {nombre}.")
         return hojas
 
     def ejecutar_fase2(self):
+        faltantes = []
+        if not self.archivos_fase2.get("bonos_anterior"):
+            faltantes.append("Bonos del año anterior")
+        if not self.archivos_fase2.get("comision_anterior"):
+            faltantes.append("Base de comisiones del año anterior")
+        if faltantes:
+            continuar = messagebox.askyesno(
+                "Año anterior",
+                "Falta:\n"
+                + "\n".join(f"• {item}" for item in faltantes)
+                + "\n\n¿Desea continuar solo con el año actual?",
+            )
+            if not continuar:
+                return
         self._ejecutar_en_hilo(self._worker_fase2)
 
     def _worker_fase2(self):
@@ -2231,6 +2349,18 @@ class VentanaPrincipal:
                 self._hojas_fase2("clasif"),
                 combinaciones=self._combinaciones_fase2(),
                 actualizar_estado=self.actualizar_estado,
+                ruta_bonos_anterior=self.archivos_fase2.get("bonos_anterior"),
+                hojas_bonos_anterior=(
+                    self._hojas_fase2("bonos_anterior")
+                    if self.archivos_fase2.get("bonos_anterior")
+                    else None
+                ),
+                ruta_comision_anterior=self.archivos_fase2.get("comision_anterior"),
+                hojas_comision_anterior=(
+                    self._hojas_fase2("comision_anterior")
+                    if self.archivos_fase2.get("comision_anterior")
+                    else None
+                ),
             )
             self.actualizar_estado("Fase 2 completada correctamente", 100, "ok")
             self.root.after(
@@ -2293,11 +2423,22 @@ class VentanaPrincipal:
     def ejecutar_base_anp(self):
         try:
             if not self.archivos_anp:
-                raise ValueError("Debe seleccionar uno o más Excel de Detalle pagado.")
+                raise ValueError(
+                    "Debe seleccionar uno o más Excel de Detalle pagado del año actual."
+                )
         except ValueError as error:
             messagebox.showerror("Base ANP", str(error))
             return
-        periodos = self._periodos_archivos_anp(list(self.archivos_anp))
+        if not self.archivos_anp_anterior:
+            continuar = messagebox.askyesno(
+                "Año anterior",
+                "No seleccionó Detalle pagado del año anterior.\n\n"
+                "¿Desea continuar solo con el año actual?",
+            )
+            if not continuar:
+                return
+        archivos = self._archivos_anp_todos()
+        periodos = self._periodos_archivos_anp(archivos)
         if periodos is None:
             return
         carpeta_inicial = getattr(self, "_ultima_carpeta_anp", None) or str(
@@ -2313,11 +2454,9 @@ class VentanaPrincipal:
         if not ruta_salida:
             return
         self._ultima_carpeta_anp = str(Path(ruta_salida).parent)
-        hojas = [hoja for hoja, variable in self.checks_anp if variable.get()]
+        hojas = self._hojas_anp_todas()
         self._ejecutar_en_hilo(
-            lambda: self._worker_base_anp(
-                list(self.archivos_anp), periodos, hojas, ruta_salida
-            )
+            lambda: self._worker_base_anp(archivos, periodos, hojas, ruta_salida)
         )
 
     def _worker_base_anp(self, archivos, periodos, hojas, ruta_salida):
@@ -2355,6 +2494,12 @@ class VentanaPrincipal:
             self._progreso_global = False
             self.root.after(0, lambda: self._set_ejecutando(False))
 
+    def _nombre_commiflow_sugerido(self):
+        mes = int(self.mes_corte_ingresos.get() or datetime.now().month)
+        anio = int(self.anio_ingresos.get() or datetime.now().year)
+        nombre_mes = MESES_INV.get(mes, "mes").lower()
+        return f"CommiFlow_{nombre_mes}_{anio}.xlsx"
+
     def ejecutar_proceso_total(self):
         try:
             contexto = self._preparar_proceso_total()
@@ -2363,6 +2508,16 @@ class VentanaPrincipal:
             return
         if contexto is None:
             return
+        ruta_salida = filedialog.asksaveasfilename(
+            title="Guardar CommiFlow",
+            defaultextension=".xlsx",
+            filetypes=[("Excel", "*.xlsx")],
+            initialfile=self._nombre_commiflow_sugerido(),
+            initialdir=str(RAIZ_PROYECTO),
+        )
+        if not ruta_salida:
+            return
+        contexto["ruta_salida"] = ruta_salida
         self._ejecutar_en_hilo(lambda: self._worker_proceso_total(contexto))
 
     def _preparar_proceso_total(self):
@@ -2406,6 +2561,14 @@ class VentanaPrincipal:
             clave: self._hojas_fase2(clave)
             for clave in ("dist", "catalogos", "bonos", "clasif")
         }
+        if self.archivos_fase2.get("bonos_anterior"):
+            hojas_fase2["bonos_anterior"] = self._hojas_fase2("bonos_anterior")
+        else:
+            hojas_fase2["bonos_anterior"] = None
+        if self.archivos_fase2.get("comision_anterior"):
+            hojas_fase2["comision_anterior"] = self._hojas_fase2("comision_anterior")
+        else:
+            hojas_fase2["comision_anterior"] = None
 
         entradas_pp, faltantes_pp = self._entradas_bases_pp()
         if faltantes_pp:
@@ -2424,18 +2587,37 @@ class VentanaPrincipal:
 
         if not self.archivos_anp:
             raise ValueError(
-                "Debe seleccionar uno o más Excel de Detalle pagado en Base ANP."
+                "Debe seleccionar uno o más Excel de Detalle pagado del año actual en Base ANP."
             )
-        periodos_anp = self._periodos_archivos_anp(list(self.archivos_anp))
+        if not self.archivos_anp_anterior:
+            continuar = messagebox.askyesno(
+                "Año anterior",
+                "No seleccionó Detalle pagado del año anterior en Base ANP.\n\n"
+                "¿Desea continuar solo con el año actual?",
+            )
+            if not continuar:
+                return None
+        if not self.archivos_fase2.get("bonos_anterior") or not self.archivos_fase2.get(
+            "comision_anterior"
+        ):
+            continuar = messagebox.askyesno(
+                "Año anterior",
+                "Faltan Bonos y/o Base de comisiones del año anterior.\n\n"
+                "¿Desea continuar solo con el año actual?",
+            )
+            if not continuar:
+                return None
+        archivos_anp = self._archivos_anp_todos()
+        periodos_anp = self._periodos_archivos_anp(archivos_anp)
         if periodos_anp is None:
             return None
-        hojas_anp = [hoja for hoja, variable in self.checks_anp if variable.get()]
+        hojas_anp = self._hojas_anp_todas()
 
         return {
             "combinaciones": combinaciones,
             "hojas_fase2": hojas_fase2,
             "entradas_pp": entradas_pp,
-            "archivos_anp": list(self.archivos_anp),
+            "archivos_anp": archivos_anp,
             "periodos_anp": periodos_anp,
             "hojas_anp": hojas_anp,
         }
@@ -2525,6 +2707,12 @@ class VentanaPrincipal:
                 combinaciones=contexto["combinaciones"],
                 actualizar_estado=self._reportar_etapa(50, 68),
                 ruta_salida=str(ruta_comision),
+                ruta_bonos_anterior=self.archivos_fase2.get("bonos_anterior"),
+                hojas_bonos_anterior=contexto["hojas_fase2"].get("bonos_anterior"),
+                ruta_comision_anterior=self.archivos_fase2.get("comision_anterior"),
+                hojas_comision_anterior=contexto["hojas_fase2"].get(
+                    "comision_anterior"
+                ),
             )
             self._limpiar_reportes_intermedios()
             usados_internos = False
@@ -2547,9 +2735,10 @@ class VentanaPrincipal:
             )
 
             self.actualizar_estado("Consolidando Excel de salida...", 95)
+            ruta_final = Path(contexto.get("ruta_salida") or ARCHIVO_CONSOLIDADO)
             consolidar_excels(
                 [ruta_comision, ruta_primas, ruta_anp],
-                ARCHIVO_CONSOLIDADO,
+                ruta_final,
             )
             self.actualizar_estado(
                 "Proceso completo finalizado correctamente", 100, "ok"
@@ -2559,8 +2748,9 @@ class VentanaPrincipal:
                 lambda: messagebox.showinfo(
                     "CommiFlow",
                     "Proceso completo finalizado.\n\n"
-                    f"Se generó {ARCHIVO_CONSOLIDADO.name} con las hojas de "
+                    f"Se generó {ruta_final.name} con las hojas de "
                     "Comisiones y Bonos, Bases PP y Base ANP.\n"
+                    "Guarde este archivo; el próximo año es el Excel del año anterior.\n"
                     "Los reportes VIDA Final y GMM Final no se conservaron.",
                 ),
             )
