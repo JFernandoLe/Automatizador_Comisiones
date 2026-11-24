@@ -151,18 +151,21 @@ def _es_columna_ramo(nombre):
     return compacto.startswith("RAMO") and compacto[4:].isdigit()
 
 
+def _indices_ramo(columnas):
+    return [indice for indice, nombre in enumerate(columnas) if _es_columna_ramo(nombre)]
+
+
 def _items_celda(valor):
     if isinstance(valor, pd.Series):
         return valor.tolist()
     return [valor]
 
 
-def _ramo_fila_bonos(fila, col_catalogo=None, columnas_ramo=None):
-    """Columna X (2GMM) gana sobre la G (101)."""
+def _clasificar_ramos(valores):
     catalogos = []
     originales = []
-    for indice in range(len(fila)):
-        for item in _items_celda(fila.iloc[indice]):
+    for valor in valores:
+        for item in _items_celda(valor):
             ramo = _ramo_atomico(item)
             if not ramo:
                 continue
@@ -170,11 +173,19 @@ def _ramo_fila_bonos(fila, col_catalogo=None, columnas_ramo=None):
                 catalogos.append(ramo)
             else:
                 originales.append(ramo)
-    if catalogos:
-        return catalogos[-1]
-    if originales:
-        return originales[-1]
-    return None
+    catalogo = catalogos[-1] if catalogos else None
+    original = originales[-1] if originales else None
+    return catalogo, original
+
+
+def _ramo_fila_bonos(fila, col_catalogo=None, columnas_ramo=None):
+    """Columna X (2GMM/1Vida) gana sobre la G (101/300)."""
+    if columnas_ramo:
+        valores = [fila.iloc[indice] if indice < len(fila) else None for indice in columnas_ramo]
+    else:
+        valores = [fila.iloc[indice] for indice in _indices_ramo(fila.index)]
+    catalogo, original = _clasificar_ramos(valores)
+    return catalogo or original
 
 
 def _parsear_fecha_bono(valor):
@@ -233,6 +244,8 @@ def _recortar_tabla_bonos(df):
     ultimo_dato = None
     for indice, col in enumerate(df.columns):
         compacto = _norm_nombre(col).replace(".", "").replace(" ", "").replace("_", "")
+        if compacto == "NUEVACLASIF":
+            return df.iloc[:, : indice + 1]
         if compacto in {
             "IMPORTE",
             "PROMOTORIA",
@@ -244,9 +257,8 @@ def _recortar_tabla_bonos(df):
             "RAMO",
             "RAMO1",
             "RAMOCLASIF",
-            "NUEVACLASIF",
             "CPTO",
-        } or compacto.startswith("RAMO"):
+        } or (compacto.startswith("RAMO") and (len(compacto) == 4 or compacto[4:].isdigit())):
             ultimo_dato = indice
     if ultimo_dato is None:
         return df
@@ -480,12 +492,25 @@ def extraer_bonos(ruta, anio):
     col_fecha = columnas.get("FECHA")
     col_mes = columnas.get("MES")
     col_figura = columnas.get("PROM_AGTE") or columnas.get("PROMAGTE")
+    idx_ramo = _indices_ramo(df.columns)
+    if df.shape[1] > 23 and 23 not in idx_ramo:
+        idx_ramo.append(23)
+    idx_figura = None
+    for indice, nombre in enumerate(df.columns):
+        if _norm_nombre(nombre).replace(" ", "") in {"PROM_AGTE", "PROMAGTE"}:
+            idx_figura = indice
     registros = []
-    for _, fila in df.iterrows():
-        ramo = _ramo_fila_bonos(fila)
+    for pos in range(len(df)):
+        fila = df.iloc[pos]
+        valores_ramo = [df.iat[pos, indice] for indice in idx_ramo if indice < df.shape[1]]
+        catalogo, original = _clasificar_ramos(valores_ramo)
+        ramo = catalogo or original
         if not ramo:
             continue
-        if col_figura and _es_agente(fila.get(col_figura)) and ramo != "GMM":
+        figura = df.iat[pos, idx_figura] if idx_figura is not None else (
+            fila.get(col_figura) if col_figura else None
+        )
+        if _es_agente(figura) and not (catalogo == "GMM" and original == "VIDA"):
             continue
         ini_raw = fila.get(col_ini) if col_ini else None
         desc = fila.get(col_desc) if col_desc else ""
