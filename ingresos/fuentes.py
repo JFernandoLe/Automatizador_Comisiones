@@ -151,24 +151,18 @@ def _es_columna_ramo(nombre):
     return compacto.startswith("RAMO") and compacto[4:].isdigit()
 
 
-def _posiciones_ramo(fila):
-    posiciones = []
-    for indice, nombre in enumerate(fila.index):
-        if _es_columna_ramo(nombre):
-            posiciones.append(indice)
-    return posiciones
+def _items_celda(valor):
+    if isinstance(valor, pd.Series):
+        return valor.tolist()
+    return [valor]
 
 
 def _ramo_fila_bonos(fila, col_catalogo=None, columnas_ramo=None):
+    """Columna X (2GMM) gana sobre la G (101)."""
     catalogos = []
     originales = []
-    for indice in _posiciones_ramo(fila):
-        valor = fila.iloc[indice]
-        if isinstance(valor, pd.Series):
-            items = valor.tolist()
-        else:
-            items = [valor]
-        for item in items:
+    for indice in range(len(fila)):
+        for item in _items_celda(fila.iloc[indice]):
             ramo = _ramo_atomico(item)
             if not ramo:
                 continue
@@ -488,7 +482,10 @@ def extraer_bonos(ruta, anio):
     col_figura = columnas.get("PROM_AGTE") or columnas.get("PROMAGTE")
     registros = []
     for _, fila in df.iterrows():
-        if col_figura and _es_agente(fila.get(col_figura)):
+        ramo = _ramo_fila_bonos(fila)
+        if not ramo:
+            continue
+        if col_figura and _es_agente(fila.get(col_figura)) and ramo != "GMM":
             continue
         ini_raw = fila.get(col_ini) if col_ini else None
         desc = fila.get(col_desc) if col_desc else ""
@@ -511,9 +508,6 @@ def extraer_bonos(ruta, anio):
                 ini = INI_RENOV
             else:
                 ini = INI_PRIMER
-        ramo = _ramo_fila_bonos(fila)
-        if not ramo:
-            continue
         anio_fila = None
         mes = None
         if col_fecha:
