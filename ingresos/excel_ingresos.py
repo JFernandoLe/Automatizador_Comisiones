@@ -1,6 +1,7 @@
 import shutil
 
 from openpyxl import load_workbook
+from openpyxl.formatting.rule import IconSetRule
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -173,6 +174,38 @@ HOJA2_BLOQUES = (
 )
 
 PROMOTOR_CELDA = f"'{HOJA_TABLERO}'!$C$3"
+FORMATO_MONTO = "#,##0.0"
+FORMATO_CRECIMIENTO = "0.0%"
+FILAS_DATOS_H1 = range(9, 52)
+COLUMNAS_MONTO_H1 = (
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J",
+    "K",
+    "N",
+    "O",
+    "P",
+    "Q",
+    "R",
+    "S",
+    "T",
+    "U",
+    "X",
+    "Y",
+    "Z",
+    "AA",
+    "AB",
+    "AC",
+    "AD",
+    "AE",
+    "AH",
+    "AI",
+)
+COLUMNAS_CRECIMIENTO_H1 = ("L", "V", "AF", "AJ")
 
 
 def _formula_suma(anio_expr, mes_expr, concepto, ramo, ini_ren):
@@ -300,7 +333,7 @@ def _aplicar_tablero(ws, anio, mes_corte):
             ws[f"{col}{fila}"] = _formula_suma(
                 _anio_param(offset), mes, concepto, ramo, ini
             )
-            ws[f"{col}{fila}"].number_format = "#,##0.00"
+            ws[f"{col}{fila}"].number_format = FORMATO_MONTO
         for col, offset in HOJA1_YTD:
             ws[f"{col}{fila}"] = _formula_suma(
                 _anio_param(offset),
@@ -309,13 +342,15 @@ def _aplicar_tablero(ws, anio, mes_corte):
                 ramo,
                 ini,
             )
-            ws[f"{col}{fila}"].number_format = "#,##0.00"
+            ws[f"{col}{fila}"].number_format = FORMATO_MONTO
 
     columnas_padre = [col for col, _mes, _off in COLUMNAS_MES_H1] + ["AH", "AI"]
     for fila, hijos in HOJA1_PADRES.items():
         for col in columnas_padre:
             ws[f"{col}{fila}"] = "=" + "+".join(f"{col}{hijo}" for hijo in hijos)
-            ws[f"{col}{fila}"].number_format = "#,##0.00"
+            ws[f"{col}{fila}"].number_format = FORMATO_MONTO
+
+    _formatear_tablero(ws)
 
     dv = DataValidation(
         type="list",
@@ -329,6 +364,25 @@ def _aplicar_tablero(ws, anio, mes_corte):
     dv.promptTitle = "Filtro"
     ws.add_data_validation(dv)
     dv.add("C3")
+
+
+def _formatear_tablero(ws):
+    for fila in FILAS_DATOS_H1:
+        for col in COLUMNAS_MONTO_H1:
+            ws[f"{col}{fila}"].number_format = FORMATO_MONTO
+        for col in COLUMNAS_CRECIMIENTO_H1:
+            ws[f"{col}{fila}"].number_format = FORMATO_CRECIMIENTO
+    for col in COLUMNAS_CRECIMIENTO_H1:
+        ws.conditional_formatting.add(
+            f"{col}{FILAS_DATOS_H1.start}:{col}{FILAS_DATOS_H1.stop - 1}",
+            IconSetRule(
+                "3Arrows",
+                "num",
+                [0, 0, 0],
+                showValue=True,
+                reverse=False,
+            ),
+        )
 
 
 def _aplicar_promotor(ws):
