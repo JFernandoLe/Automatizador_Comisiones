@@ -105,7 +105,7 @@ def _mes_numero(valor):
     return MESES_NUM.get(texto)
 
 
-def _ramo(valor):
+def _ramo_atomico(valor):
     entero = _a_entero(valor)
     if entero == 300:
         return "GMM"
@@ -119,6 +119,29 @@ def _ramo(valor):
     return None
 
 
+def _es_valor_catalogo_ramo(valor):
+    texto = _norm_nombre(valor).replace(" ", "").replace(".", "")
+    if texto in {"101", "300"}:
+        return False
+    return "1VIDA" in texto or "2GMM" in texto or texto in {"VIDA", "GMM"}
+
+
+def _ramo(valor):
+    if isinstance(valor, pd.Series):
+        catalogo = None
+        original = None
+        for item in valor.tolist():
+            ramo = _ramo_atomico(item)
+            if not ramo:
+                continue
+            if _es_valor_catalogo_ramo(item):
+                catalogo = ramo
+            else:
+                original = ramo
+        return catalogo or original
+    return _ramo_atomico(valor)
+
+
 def _es_columna_ramo(nombre):
     compacto = _norm_nombre(nombre).replace(".", "").replace(" ", "").replace("_", "")
     if compacto == "RAMOCLASIF":
@@ -128,40 +151,35 @@ def _es_columna_ramo(nombre):
     return compacto.startswith("RAMO") and compacto[4:].isdigit()
 
 
-def _columna_ramo_catalogo(df):
-    """Ramo de la derecha: 1Vida / 2GMM (no el 101/300 original)."""
-    candidatas = [col for col in df.columns if _es_columna_ramo(col)]
-    if not candidatas:
-        return None
-
-    def puntos(col):
-        muestra = df[col].dropna().astype(str).head(400).map(_norm_nombre)
-        catalogo = int(muestra.str.contains("1VIDA|2GMM", regex=True).sum())
-        texto = int(muestra.str.contains("VIDA|GMM", regex=True).sum())
-        return (catalogo, texto)
-
-    ordenadas = sorted(
-        candidatas,
-        key=lambda col: (puntos(col), candidatas.index(col)),
-    )
-    return ordenadas[-1]
+def _posiciones_ramo(fila):
+    posiciones = []
+    for indice, nombre in enumerate(fila.index):
+        if _es_columna_ramo(nombre):
+            posiciones.append(indice)
+    return posiciones
 
 
-def _columnas_ramo(df):
-    return [col for col in df.columns if _es_columna_ramo(col)]
-
-
-def _ramo_fila_bonos(fila, col_catalogo, columnas_ramo):
-    if col_catalogo:
-        ramo = _ramo(fila.get(col_catalogo))
-        if ramo:
-            return ramo
-    for col in columnas_ramo:
-        if col == col_catalogo:
-            continue
-        ramo = _ramo(fila.get(col))
-        if ramo:
-            return ramo
+def _ramo_fila_bonos(fila, col_catalogo=None, columnas_ramo=None):
+    catalogos = []
+    originales = []
+    for indice in _posiciones_ramo(fila):
+        valor = fila.iloc[indice]
+        if isinstance(valor, pd.Series):
+            items = valor.tolist()
+        else:
+            items = [valor]
+        for item in items:
+            ramo = _ramo_atomico(item)
+            if not ramo:
+                continue
+            if _es_valor_catalogo_ramo(item):
+                catalogos.append(ramo)
+            else:
+                originales.append(ramo)
+    if catalogos:
+        return catalogos[-1]
+    if originales:
+        return originales[-1]
     return None
 
 
@@ -218,27 +236,27 @@ def _hoja_pagos_bonos(ruta):
 def _recortar_tabla_bonos(df):
     if df is None or df.empty:
         return df
-    vacios = 0
-    corte = None
-    vio_importe = False
+    ultimo_dato = None
     for indice, col in enumerate(df.columns):
-        nombre = _norm_nombre(col)
-        if "IMPORTE" in nombre:
-            vio_importe = True
-        anonima = (
-            str(col).startswith("Unnamed")
-            or nombre in {"", "NAN", "NONE", "NAT"}
-        )
-        if anonima:
-            vacios += 1
-            if vio_importe and vacios >= 2:
-                corte = indice - vacios + 1
-                break
-        else:
-            vacios = 0
-    if corte is not None and corte > 0:
-        return df.iloc[:, :corte]
-    return df
+        compacto = _norm_nombre(col).replace(".", "").replace(" ", "").replace("_", "")
+        if compacto in {
+            "IMPORTE",
+            "PROMOTORIA",
+            "PRIMA",
+            "FECHA",
+            "MES",
+            "PROMAGTE",
+            "INIREN",
+            "RAMO",
+            "RAMO1",
+            "RAMOCLASIF",
+            "NUEVACLASIF",
+            "CPTO",
+        } or compacto.startswith("RAMO"):
+            ultimo_dato = indice
+    if ultimo_dato is None:
+        return df
+    return df.iloc[:, : ultimo_dato + 1]
 
 
 def _es_agente(valor):
@@ -456,8 +474,6 @@ def extraer_bonos(ruta, anio):
     if not col_prom and not col_prima:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
     col_ini = columnas.get("INI_REN")
-    col_ramo = _columna_ramo_catalogo(df)
-    columnas_ramo = _columnas_ramo(df)
     col_clasif = columnas.get("NUEVA CLASIF")
     col_desc = None
     for nombre, col in columnas.items():
@@ -495,7 +511,7 @@ def extraer_bonos(ruta, anio):
                 ini = INI_RENOV
             else:
                 ini = INI_PRIMER
-        ramo = _ramo_fila_bonos(fila, col_ramo, columnas_ramo)
+        ramo = _ramo_fila_bonos(fila)
         if not ramo:
             continue
         anio_fila = None
