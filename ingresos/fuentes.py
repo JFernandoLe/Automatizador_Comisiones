@@ -106,10 +106,15 @@ def _mes_numero(valor):
 
 
 def _ramo(valor):
-    texto = _norm_nombre(valor)
-    if "GMM" in texto or texto == "300":
+    entero = _a_entero(valor)
+    if entero == 300:
         return "GMM"
-    if "VIDA" in texto or texto == "101":
+    if entero == 101:
+        return "VIDA"
+    texto = _norm_nombre(valor)
+    if "GMM" in texto:
+        return "GMM"
+    if "VIDA" in texto:
         return "VIDA"
     return None
 
@@ -170,9 +175,25 @@ def _parsear_fecha_bono(valor):
         pass
     if isinstance(valor, datetime):
         return valor
+    if isinstance(valor, pd.Timestamp):
+        if pd.isna(valor):
+            return None
+        return valor.to_pydatetime()
+    numero = None
+    try:
+        if not isinstance(valor, str):
+            numero = float(valor)
+    except (TypeError, ValueError):
+        numero = None
+    if numero is not None and 20000 <= numero <= 80000:
+        fecha = pd.to_datetime(numero, unit="D", origin="1899-12-30", errors="coerce")
+        if pd.notna(fecha):
+            return fecha.to_pydatetime()
     fecha = pd.to_datetime(valor, errors="coerce", dayfirst=True)
     if pd.notna(fecha):
-        return fecha.to_pydatetime()
+        anio = int(fecha.year)
+        if 1990 <= anio <= 2100:
+            return fecha.to_pydatetime()
     texto = str(valor).strip()
     for formato in ("%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y", "%Y-%m-%d", "%d.%m.%Y"):
         try:
@@ -180,6 +201,44 @@ def _parsear_fecha_bono(valor):
         except (TypeError, ValueError):
             continue
     return None
+
+
+def _hoja_pagos_bonos(ruta):
+    try:
+        hojas = _hojas(ruta)
+    except Exception:
+        return None
+    for hoja in hojas:
+        compacto = _norm_nombre(hoja).replace(" ", "").replace("_", "")
+        if compacto == "PAGOSDEBONOS" or compacto.startswith("PAGOSDEBONOS"):
+            return hoja
+    return None
+
+
+def _recortar_tabla_bonos(df):
+    if df is None or df.empty:
+        return df
+    vacios = 0
+    corte = None
+    vio_importe = False
+    for indice, col in enumerate(df.columns):
+        nombre = _norm_nombre(col)
+        if "IMPORTE" in nombre:
+            vio_importe = True
+        anonima = (
+            str(col).startswith("Unnamed")
+            or nombre in {"", "NAN", "NONE", "NAT"}
+        )
+        if anonima:
+            vacios += 1
+            if vio_importe and vacios >= 2:
+                corte = indice - vacios + 1
+                break
+        else:
+            vacios = 0
+    if corte is not None and corte > 0:
+        return df.iloc[:, :corte]
+    return df
 
 
 def _es_agente(valor):
@@ -381,15 +440,20 @@ def extraer_comision_base(ruta, anio):
 
 
 def extraer_bonos(ruta, anio):
-    if not _tiene_hoja(ruta, "Pagos_de_Bonos"):
+    hoja = _hoja_pagos_bonos(ruta)
+    if not hoja:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
-    df = pd.read_excel(ruta, sheet_name="Pagos_de_Bonos")
+    df = pd.read_excel(ruta, sheet_name=hoja)
+    df = _recortar_tabla_bonos(df)
     if df.empty:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
     columnas = {_norm_nombre(col): col for col in df.columns}
     col_prom = columnas.get("PROMOTORIA")
+    col_prima = columnas.get("PRIMA")
     col_importe = columnas.get("IMPORTE")
-    if not col_prom or not col_importe:
+    if not col_importe:
+        return pd.DataFrame(columns=COLUMNAS_DATOS)
+    if not col_prom and not col_prima:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
     col_ini = columnas.get("INI_REN")
     col_ramo = _columna_ramo_catalogo(df)
@@ -446,7 +510,11 @@ def extraer_bonos(ruta, anio):
         if anio_fila is None:
             anio_fila = anio
         anio_fila, mes = _mes_desfasado(anio_fila, mes)
-        clave_prom = _promotor(fila.get(col_prom))
+        clave_prom = _promotor(fila.get(col_prom) if col_prom else None)
+        if clave_prom is None and col_prima:
+            clave_prom = _promotor(fila.get(col_prima))
+        if clave_prom is None:
+            continue
         registros.append(
             {
                 "Año": anio_fila,
@@ -461,7 +529,7 @@ def extraer_bonos(ruta, anio):
                 "Fuente": "Pagos_de_Bonos",
             }
         )
-    return _filas(registros)
+    return _filas(registros, exigir_promotor=False)
 
 
 def extraer_anp(ruta):
