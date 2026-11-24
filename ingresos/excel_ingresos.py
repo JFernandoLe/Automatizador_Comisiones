@@ -1,7 +1,7 @@
 import shutil
 
 from openpyxl import load_workbook
-from openpyxl.formatting.rule import IconSetRule
+from openpyxl.formatting.rule import FormatObject, IconSet, Rule
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -366,6 +366,21 @@ def _aplicar_tablero(ws, anio, mes_corte):
     dv.add("C3")
 
 
+def _regla_kpi_crecimiento():
+    iconos = IconSet(
+        iconSet="3TrafficLights1",
+        showValue=True,
+        reverse=False,
+        percent=False,
+        cfvo=[
+            FormatObject(type="num", val=-1e12),
+            FormatObject(type="num", val=0, gte=True),
+            FormatObject(type="num", val=0, gte=True),
+        ],
+    )
+    return Rule(type="iconSet", iconSet=iconos)
+
+
 def _formatear_tablero(ws):
     for fila in FILAS_DATOS_H1:
         for col in COLUMNAS_MONTO_H1:
@@ -375,13 +390,7 @@ def _formatear_tablero(ws):
     for col in COLUMNAS_CRECIMIENTO_H1:
         ws.conditional_formatting.add(
             f"{col}{FILAS_DATOS_H1.start}:{col}{FILAS_DATOS_H1.stop - 1}",
-            IconSetRule(
-                "3Arrows",
-                "num",
-                [0, 0, 0],
-                showValue=True,
-                reverse=False,
-            ),
+            _regla_kpi_crecimiento(),
         )
 
 
