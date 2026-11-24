@@ -574,6 +574,83 @@ def construir_pagos_bonos(df, dist_map, pfpm_map, clasif_map):
     return salida
 
 
+def _valor_texto_aviso(valor):
+    if valor is None:
+        return ""
+    try:
+        if pd.isna(valor):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    if isinstance(valor, pd.Timestamp):
+        if pd.isna(valor):
+            return ""
+        return valor.strftime("%d/%m/%Y")
+    return str(valor).strip()
+
+
+def fila_aviso_bonos(df, pos):
+    campos = []
+    cpto = None
+    for indice, nombre in enumerate(df.columns):
+        valor = df.iat[pos, indice] if indice < df.shape[1] else None
+        campos.append((str(nombre), valor))
+        if _norm_nombre(nombre) == "CPTO":
+            cpto = valor
+    return {"cpto": cpto, "campos": campos}
+
+
+def avisos_cpto_sin_catalogo(df):
+    if df is None or df.empty or "Prom_Agte" not in df.columns:
+        return []
+    idx_figura = list(df.columns).index("Prom_Agte")
+    avisos = []
+    for pos in range(len(df)):
+        if _figura_resumen(df.iat[pos, idx_figura]) is not None:
+            continue
+        avisos.append(fila_aviso_bonos(df, pos))
+    return avisos
+
+
+def texto_aviso_cpto_sin_catalogo(avisos):
+    if not avisos:
+        return ""
+    grupos = []
+    vistos = {}
+    for aviso in avisos:
+        clave = _clave_cc(aviso.get("cpto"))
+        if clave is None:
+            clave = _valor_texto_aviso(aviso.get("cpto")) or "(sin Cpto)"
+        if clave not in vistos:
+            vistos[clave] = len(grupos)
+            grupos.append(
+                {
+                    "cpto": aviso.get("cpto"),
+                    "cantidad": 0,
+                    "campos": aviso.get("campos") or [],
+                }
+            )
+        grupos[vistos[clave]]["cantidad"] += 1
+    lineas = [
+        "Estos conceptos no están en el Catálogo de clasificaciones "
+        "(o no tienen FIGURA). No se tomaron como PROMOTOR.",
+        "Agregue el CC en el catálogo con FIGURA, Ini_Ren y Ramo.",
+        "",
+    ]
+    for grupo in grupos:
+        cpto = _valor_texto_aviso(grupo["cpto"]) or "(sin Cpto)"
+        extra = (
+            f"  ({grupo['cantidad']} pagos con este Cpto)"
+            if grupo["cantidad"] > 1
+            else ""
+        )
+        lineas.append(f"Cpto: {cpto}{extra}")
+        for nombre, valor in grupo["campos"]:
+            lineas.append(f"  {nombre}: {_valor_texto_aviso(valor) or '(vacío)'}")
+        lineas.append("")
+    return "\n".join(lineas).strip()
+
+
 CONCEPTOS_AGENTE = (
     "Arranque",
     "Campaña",

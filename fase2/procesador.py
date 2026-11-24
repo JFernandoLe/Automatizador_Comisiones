@@ -5,6 +5,7 @@ import pandas as pd
 from fase2.excel_salida import guardar_comision
 from fase2.transformaciones import (
     COLUMNAS_COMISION_BASE,
+    avisos_cpto_sin_catalogo,
     construir_comision_base,
     construir_pagos_bonos,
     construir_tabla_gmm,
@@ -196,10 +197,12 @@ def generar_comision_fase2(
         )
     _avisar(actualizar_estado, "Procesando Pagos de Bonos...", 84)
     tabla_bonos = construir_pagos_bonos(df_bonos, dist_map, pfpm_map, clasif_map)
+    avisos = avisos_cpto_sin_catalogo(tabla_bonos)
     if df_bonos_anterior is not None and not df_bonos_anterior.empty:
         tabla_bonos_ant = construir_pagos_bonos(
             df_bonos_anterior, dist_map, pfpm_map, clasif_map
         )
+        avisos.extend(avisos_cpto_sin_catalogo(tabla_bonos_ant))
         tabla_bonos = pd.concat([tabla_bonos, tabla_bonos_ant], ignore_index=True)
 
     _avisar(actualizar_estado, "Generando Comision.xlsx...", 93)
@@ -218,4 +221,4 @@ def generar_comision_fase2(
         f"Bonos filas: {len(tabla_bonos):,}"
     )
     print(f"Archivo generado: {ruta}")
-    return ruta
+    return ruta, avisos

@@ -39,7 +39,10 @@ def generar_ingresos(
         (int(anio_actual) - 1, archivo_anterior),
         (int(anio_actual) - 2, archivo_dos_anios),
     ]
-    datos = consolidar_datos(paquetes, actualizar_estado=actualizar_estado)
+    avisos = []
+    datos = consolidar_datos(
+        paquetes, actualizar_estado=actualizar_estado, avisos=avisos
+    )
     avisar("Llenando plantilla...", 72)
     ruta = llenar_plantilla(
         plantilla,
@@ -49,4 +52,4 @@ def generar_ingresos(
         mes_corte,
     )
     avisar("Ingresos vs Ventas generado", 100)
-    return ruta
+    return ruta, avisos

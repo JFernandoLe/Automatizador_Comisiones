@@ -9,6 +9,7 @@ from fase2.transformaciones import (
     CLASIF_BONO,
     CLASIF_CONVENIO,
     clasificar_nueva_clasif,
+    fila_aviso_bonos,
     _figura_resumen,
     _ini_ren_resumen,
     _norm_nombre,
@@ -498,7 +499,7 @@ def extraer_comision_base(ruta, anio):
     return _filas(pd.concat(bloques, ignore_index=True), agrupar=False, exigir_promotor=False)
 
 
-def extraer_bonos(ruta, anio):
+def extraer_bonos(ruta, anio, avisos=None):
     hoja = _hoja_pagos_bonos(ruta)
     if not hoja:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
@@ -534,6 +535,8 @@ def extraer_bonos(ruta, anio):
     for pos in range(len(df)):
         figura = _valor_pos(df, pos, idx_figura)
         if not _es_promotor(figura):
+            if avisos is not None and not _es_agente(figura):
+                avisos.append(fila_aviso_bonos(df, pos))
             continue
         valores_ramo = [_valor_pos(df, pos, indice) for indice in idx_ramo]
         if df.shape[1] > COL_EXCEL_RAMO_X:
@@ -721,14 +724,14 @@ def extraer_primas(ruta):
     return _filas(registros)
 
 
-def extraer_paquete(ruta, anio, actualizar_estado=None):
+def extraer_paquete(ruta, anio, actualizar_estado=None, avisos=None):
     if not ruta or not Path(ruta).exists():
         return pd.DataFrame(columns=COLUMNAS_DATOS)
     _avisar(actualizar_estado, f"Leyendo {Path(ruta).name}...", 20)
     existente = leer_datos_existente(ruta)
     partes = [existente] if not existente.empty else []
     partes.append(extraer_comision_base(ruta, anio))
-    partes.append(extraer_bonos(ruta, anio))
+    partes.append(extraer_bonos(ruta, anio, avisos=avisos))
     partes.append(extraer_anp(ruta))
     partes.append(extraer_primas(ruta))
     partes = [parte for parte in partes if parte is not None and not parte.empty]
@@ -737,12 +740,12 @@ def extraer_paquete(ruta, anio, actualizar_estado=None):
     return _completar_columnas(pd.concat(partes, ignore_index=True))
 
 
-def consolidar_datos(paquetes, actualizar_estado=None):
+def consolidar_datos(paquetes, actualizar_estado=None, avisos=None):
     partes = []
     for anio, ruta in paquetes:
         if not ruta:
             continue
-        partes.append(extraer_paquete(ruta, anio, actualizar_estado))
+        partes.append(extraer_paquete(ruta, anio, actualizar_estado, avisos=avisos))
     partes = [parte for parte in partes if not parte.empty]
     if not partes:
         return pd.DataFrame(columns=COLUMNAS_DATOS)

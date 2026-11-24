@@ -36,6 +36,7 @@ from fase2.transformaciones import (
     CONCEPTOS_DETALLE,
     FIGURAS_DETALLE,
     RAMOS2_DETALLE,
+    texto_aviso_cpto_sin_catalogo,
 )
 from procesos.bases_sap import generar_bases_sap
 from procesos.comisiones import generar_comisiones
@@ -2054,6 +2055,52 @@ class VentanaPrincipal:
                     cursor="hand2",
                 )
 
+    def _mostrar_aviso_catalogo(self, avisos):
+        texto = texto_aviso_cpto_sin_catalogo(avisos)
+        if not texto:
+            return
+        ventana = tk.Toplevel(self.root)
+        ventana.title("Conceptos no encontrados en el catálogo")
+        ventana.configure(bg=COLORES["fondo"])
+        ventana.geometry("720x520")
+        ventana.transient(self.root)
+        ttk.Label(
+            ventana,
+            text="Actualice el Catálogo de clasificaciones y vuelva a procesar Bonos.",
+            wraplength=680,
+        ).pack(anchor="w", padx=16, pady=(14, 8))
+        marco = tk.Frame(ventana, bg=COLORES["tarjeta"], highlightbackground=COLORES["borde"], highlightthickness=1)
+        marco.pack(fill="both", expand=True, padx=16, pady=(0, 8))
+        texto_widget = tk.Text(
+            marco,
+            wrap="word",
+            font=("Segoe UI", 10),
+            bg=COLORES["tarjeta"],
+            fg=COLORES["texto"],
+            relief="flat",
+            padx=10,
+            pady=10,
+        )
+        scroll = ttk.Scrollbar(marco, command=texto_widget.yview)
+        texto_widget.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        texto_widget.pack(side="left", fill="both", expand=True)
+        texto_widget.insert("1.0", texto)
+        texto_widget.config(state="disabled")
+        tk.Button(
+            ventana,
+            text="Cerrar",
+            command=ventana.destroy,
+            bg=COLORES["primario"],
+            fg="#FFFFFF",
+            activebackground=COLORES["primario_hover"],
+            relief="flat",
+            padx=16,
+            pady=6,
+        ).pack(pady=(0, 14))
+        ventana.grab_set()
+        ventana.focus_set()
+
     def _manejar_error(self, error):
         import traceback
 
@@ -2334,7 +2381,7 @@ class VentanaPrincipal:
         self._progreso_minimo = 0
         self.actualizar_estado("Iniciando Fase 2...", 0)
         try:
-            generar_comision_fase2(
+            _ruta, avisos = generar_comision_fase2(
                 self.archivos_fase2["vida"],
                 self._hojas_fase2("vida"),
                 self.archivos_fase2["gmm"],
@@ -2363,18 +2410,44 @@ class VentanaPrincipal:
                 ),
             )
             self.actualizar_estado("Fase 2 completada correctamente", 100, "ok")
+            avisos_copia = list(avisos or [])
             self.root.after(
                 0,
-                lambda: messagebox.showinfo(
-                    "CommiFlow",
-                    "Fase 2 completada. Se generó Comision.xlsx con la hoja Pagos_de_Bonos.",
-                ),
+                lambda: self._aviso_fin_fase2(avisos_copia),
             )
         except Exception as error:
             self._manejar_error(error)
         finally:
             self._progreso_global = False
             self.root.after(0, lambda: self._set_ejecutando(False))
+
+    def _aviso_fin_fase2(self, avisos):
+        messagebox.showinfo(
+            "CommiFlow",
+            "Fase 2 completada. Se generó Comision.xlsx con la hoja Pagos_de_Bonos.",
+        )
+        self._mostrar_aviso_catalogo(avisos)
+
+    def _aviso_fin_proceso_completo(self, nombre_final, avisos):
+        messagebox.showinfo(
+            "CommiFlow",
+            "Proceso completo finalizado.\n\n"
+            f"Se generó {nombre_final} con las hojas de "
+            "Comisiones y Bonos, Bases PP y Base ANP.\n"
+            "Guarde este archivo; el próximo año es el Excel del año anterior.\n"
+            "Los reportes VIDA Final y GMM Final no se conservaron.",
+        )
+        self._mostrar_aviso_catalogo(avisos)
+
+    def _aviso_fin_ingresos(self, ruta, avisos):
+        messagebox.showinfo(
+            "CommiFlow",
+            "Se generó Ingresos vs Ventas.\n\n"
+            f"{ruta}\n\n"
+            "En la hoja Filtro elija TOTAL o un promotor. "
+            "Año y mes de corte se pueden cambiar en Parametros.",
+        )
+        self._mostrar_aviso_catalogo(avisos)
 
     def ejecutar_bases_pp(self):
         try:
@@ -2691,7 +2764,7 @@ class VentanaPrincipal:
             ruta_gmm, hojas_gmm = self._ruta_reporte_generado("GMM")
 
             ruta_comision = carpeta_temp / "Comision.xlsx"
-            generar_comision_fase2(
+            _ruta_comision, avisos_catalogo = generar_comision_fase2(
                 ruta_vida,
                 hojas_vida,
                 ruta_gmm,
@@ -2743,16 +2816,11 @@ class VentanaPrincipal:
             self.actualizar_estado(
                 "Proceso completo finalizado correctamente", 100, "ok"
             )
+            avisos_copia = list(avisos_catalogo or [])
+            nombre_final = ruta_final.name
             self.root.after(
                 0,
-                lambda: messagebox.showinfo(
-                    "CommiFlow",
-                    "Proceso completo finalizado.\n\n"
-                    f"Se generó {ruta_final.name} con las hojas de "
-                    "Comisiones y Bonos, Bases PP y Base ANP.\n"
-                    "Guarde este archivo; el próximo año es el Excel del año anterior.\n"
-                    "Los reportes VIDA Final y GMM Final no se conservaron.",
-                ),
+                lambda: self._aviso_fin_proceso_completo(nombre_final, avisos_copia),
             )
         except Exception as error:
             self._manejar_error(error)
@@ -2794,7 +2862,7 @@ class VentanaPrincipal:
         self._progreso_minimo = 0
         self.actualizar_estado("Iniciando Ingresos vs Ventas...", 0)
         try:
-            ruta = generar_ingresos(
+            ruta, avisos = generar_ingresos(
                 anio,
                 mes,
                 self.archivos_ingresos.get("actual"),
@@ -2805,15 +2873,10 @@ class VentanaPrincipal:
                 actualizar_estado=self.actualizar_estado,
             )
             self.actualizar_estado("Ingresos vs Ventas generado", 100, "ok")
+            avisos_copia = list(avisos or [])
             self.root.after(
                 0,
-                lambda: messagebox.showinfo(
-                    "CommiFlow",
-                    "Se generó Ingresos vs Ventas.\n\n"
-                    f"{ruta}\n\n"
-                    "En la hoja Filtro elija TOTAL o un promotor. "
-                    "Año y mes de corte se pueden cambiar en Parametros.",
-                ),
+                lambda: self._aviso_fin_ingresos(ruta, avisos_copia),
             )
         except Exception as error:
             self._manejar_error(error)
