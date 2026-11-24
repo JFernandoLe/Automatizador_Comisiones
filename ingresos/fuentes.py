@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -139,6 +140,51 @@ def _columna_ramo_catalogo(df):
         key=lambda col: (puntos(col), candidatas.index(col)),
     )
     return ordenadas[-1]
+
+
+def _columnas_ramo(df):
+    return [col for col in df.columns if _es_columna_ramo(col)]
+
+
+def _ramo_fila_bonos(fila, col_catalogo, columnas_ramo):
+    if col_catalogo:
+        ramo = _ramo(fila.get(col_catalogo))
+        if ramo:
+            return ramo
+    for col in columnas_ramo:
+        if col == col_catalogo:
+            continue
+        ramo = _ramo(fila.get(col))
+        if ramo:
+            return ramo
+    return None
+
+
+def _parsear_fecha_bono(valor):
+    if valor is None:
+        return None
+    try:
+        if pd.isna(valor):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(valor, datetime):
+        return valor
+    fecha = pd.to_datetime(valor, errors="coerce", dayfirst=True)
+    if pd.notna(fecha):
+        return fecha.to_pydatetime()
+    texto = str(valor).strip()
+    for formato in ("%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y", "%Y-%m-%d", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(texto[:10], formato)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _es_agente(valor):
+    figura = _figura_resumen(valor)
+    return figura in {"AGENTE", "AGENTE CVD"}
 
 
 def _ini_tabla(valor):
@@ -347,6 +393,7 @@ def extraer_bonos(ruta, anio):
         return pd.DataFrame(columns=COLUMNAS_DATOS)
     col_ini = columnas.get("INI_REN")
     col_ramo = _columna_ramo_catalogo(df)
+    columnas_ramo = _columnas_ramo(df)
     col_clasif = columnas.get("NUEVA CLASIF")
     col_desc = None
     for nombre, col in columnas.items():
@@ -361,7 +408,7 @@ def extraer_bonos(ruta, anio):
     col_figura = columnas.get("PROM_AGTE") or columnas.get("PROMAGTE")
     registros = []
     for _, fila in df.iterrows():
-        if col_figura and not _es_promotor(fila.get(col_figura)):
+        if col_figura and _es_agente(fila.get(col_figura)):
             continue
         ini_raw = fila.get(col_ini) if col_ini else None
         desc = fila.get(col_desc) if col_desc else ""
@@ -384,18 +431,20 @@ def extraer_bonos(ruta, anio):
                 ini = INI_RENOV
             else:
                 ini = INI_PRIMER
-        ramo = _ramo(fila.get(col_ramo) if col_ramo else None)
+        ramo = _ramo_fila_bonos(fila, col_ramo, columnas_ramo)
         if not ramo:
             continue
-        anio_fila = anio
+        anio_fila = None
         mes = None
         if col_fecha:
-            fecha = pd.to_datetime(fila.get(col_fecha), errors="coerce")
-            if pd.notna(fecha):
+            fecha = _parsear_fecha_bono(fila.get(col_fecha))
+            if fecha is not None:
                 anio_fila = int(fecha.year)
                 mes = int(fecha.month)
         if mes is None and col_mes:
             mes = _mes_numero(fila.get(col_mes))
+        if anio_fila is None:
+            anio_fila = anio
         anio_fila, mes = _mes_desfasado(anio_fila, mes)
         clave_prom = _promotor(fila.get(col_prom))
         registros.append(
