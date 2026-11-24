@@ -528,27 +528,19 @@ def extraer_bonos(ruta, anio):
     idx_mes = _indice_columna(df.columns, "Mes", ultima=False)
     idx_figura = _indice_columna(df.columns, "Prom_Agte", "PromAgte")
     idx_ramo = _indices_ramo(df.columns)
-    for extra in (COL_EXCEL_RAMO_G, COL_EXCEL_RAMO_X):
-        if extra < df.shape[1] and extra not in idx_ramo:
-            idx_ramo.append(extra)
+    if df.shape[1] > COL_EXCEL_RAMO_X and COL_EXCEL_RAMO_X not in idx_ramo:
+        idx_ramo.append(COL_EXCEL_RAMO_X)
     registros = []
     for pos in range(len(df)):
-        valores_ramo = []
-        if df.shape[1] > COL_EXCEL_RAMO_G:
-            valores_ramo.append(_valor_pos(df, pos, COL_EXCEL_RAMO_G))
-        for indice in idx_ramo:
-            if indice in (COL_EXCEL_RAMO_G, COL_EXCEL_RAMO_X):
-                continue
-            valores_ramo.append(_valor_pos(df, pos, indice))
+        figura = _valor_pos(df, pos, idx_figura)
+        if not _es_promotor(figura):
+            continue
+        valores_ramo = [_valor_pos(df, pos, indice) for indice in idx_ramo]
         if df.shape[1] > COL_EXCEL_RAMO_X:
             valores_ramo.append(_valor_pos(df, pos, COL_EXCEL_RAMO_X))
-        catalogo, original = _clasificar_ramos(valores_ramo)
-        ramo = catalogo or original
+        catalogo, _original = _clasificar_ramos(valores_ramo)
+        ramo = catalogo
         if not ramo:
-            continue
-        figura = _valor_pos(df, pos, idx_figura)
-        mismatch_gmm = catalogo == "GMM" and original == "VIDA"
-        if _es_agente(figura) and not mismatch_gmm:
             continue
         ini_raw = _valor_pos(df, pos, idx_ini)
         desc = _valor_pos(df, pos, idx_desc)
@@ -570,7 +562,7 @@ def extraer_bonos(ruta, anio):
             elif resumido == "Conservación":
                 ini = INI_RENOV
             else:
-                ini = INI_PRIMER
+                continue
         anio_fila = None
         mes = None
         fecha = _parsear_fecha_bono(_valor_pos(df, pos, idx_fecha))
@@ -585,10 +577,6 @@ def extraer_bonos(ruta, anio):
         clave_prom = _promotor(_valor_pos(df, pos, idx_prom))
         if clave_prom is None:
             clave_prom = _promotor(_valor_pos(df, pos, idx_prima))
-        if clave_prom is None and df.shape[1] > 15:
-            clave_prom = _promotor(_valor_pos(df, pos, 15))
-        if clave_prom is None and df.shape[1] > 9:
-            clave_prom = _promotor(_valor_pos(df, pos, 9))
         if clave_prom is None:
             continue
         registros.append(
