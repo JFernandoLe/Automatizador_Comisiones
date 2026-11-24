@@ -120,7 +120,7 @@ def _ramo_atomico(valor):
 
 
 def _es_valor_catalogo_ramo(valor):
-    texto = _norm_nombre(valor).replace(" ", "").replace(".", "")
+    texto = _norm_nombre(valor).replace(" ", "").replace(".", "").replace("-", "").replace("_", "")
     if texto in {"101", "300"}:
         return False
     return "1VIDA" in texto or "2GMM" in texto or texto in {"VIDA", "GMM"}
@@ -238,14 +238,22 @@ def _hoja_pagos_bonos(ruta):
     return None
 
 
+# En Pagos_de_Bonos de CommiFlow: G = Ramo 101/300, X = Ramo 1Vida/2GMM.
+COL_EXCEL_RAMO_G = 6
+COL_EXCEL_RAMO_X = 23
+
+
 def _recortar_tabla_bonos(df):
     if df is None or df.empty:
         return df
     ultimo_dato = None
     for indice, col in enumerate(df.columns):
         compacto = _norm_nombre(col).replace(".", "").replace(" ", "").replace("_", "")
+        if compacto in {"VIDA", "GMM", "TOTALGENERAL"} and indice > COL_EXCEL_RAMO_X:
+            break
         if compacto == "NUEVACLASIF":
-            return df.iloc[:, : indice + 1]
+            ultimo_dato = indice
+            break
         if compacto in {
             "IMPORTE",
             "PROMOTORIA",
@@ -260,14 +268,41 @@ def _recortar_tabla_bonos(df):
             "CPTO",
         } or (compacto.startswith("RAMO") and (len(compacto) == 4 or compacto[4:].isdigit())):
             ultimo_dato = indice
+    if df.shape[1] > COL_EXCEL_RAMO_X:
+        ultimo_dato = max(ultimo_dato or 0, COL_EXCEL_RAMO_X)
+        if df.shape[1] > COL_EXCEL_RAMO_X + 1:
+            ultimo_dato = max(ultimo_dato, COL_EXCEL_RAMO_X + 1)
     if ultimo_dato is None:
         return df
     return df.iloc[:, : ultimo_dato + 1]
 
 
+def _indice_columna(columnas, *nombres, ultima=True):
+    objetivos = set()
+    for nombre in nombres:
+        compacto = _norm_nombre(nombre).replace(".", "").replace(" ", "").replace("_", "")
+        objetivos.add(compacto)
+    encontrado = None
+    for indice, col in enumerate(columnas):
+        compacto = _norm_nombre(col).replace(".", "").replace(" ", "").replace("_", "")
+        if compacto in objetivos:
+            encontrado = indice
+            if not ultima:
+                return indice
+    return encontrado
+
+
+def _valor_pos(df, fila, indice):
+    if indice is None or indice < 0 or indice >= df.shape[1]:
+        return None
+    return df.iat[fila, indice]
+
+
 def _es_agente(valor):
-    figura = _figura_resumen(valor)
-    return figura in {"AGENTE", "AGENTE CVD"}
+    figuras = [_figura_resumen(item) for item in _items_celda(valor)]
+    if "PROMOTOR" in figuras:
+        return False
+    return any(figura in {"AGENTE", "AGENTE CVD"} for figura in figuras)
 
 
 def _ini_tabla(valor):
@@ -471,50 +506,53 @@ def extraer_bonos(ruta, anio):
     df = _recortar_tabla_bonos(df)
     if df.empty:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
-    columnas = {_norm_nombre(col): col for col in df.columns}
-    col_prom = columnas.get("PROMOTORIA")
-    col_prima = columnas.get("PRIMA")
-    col_importe = columnas.get("IMPORTE")
-    if not col_importe:
+    idx_importe = _indice_columna(df.columns, "Importe", ultima=False)
+    idx_prom = _indice_columna(df.columns, "Promotoria")
+    idx_prima = _indice_columna(df.columns, "Prima")
+    if idx_importe is None:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
-    if not col_prom and not col_prima:
+    if idx_prom is None and idx_prima is None:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
-    col_ini = columnas.get("INI_REN")
-    col_clasif = columnas.get("NUEVA CLASIF")
-    col_desc = None
-    for nombre, col in columnas.items():
-        compacto = nombre.replace(".", "").replace(" ", "")
-        if "DESC" in compacto and "CPTO" in compacto:
-            col_desc = col
-            break
-        if nombre == "DESCCONCEPTO":
-            col_desc = col
-    col_fecha = columnas.get("FECHA")
-    col_mes = columnas.get("MES")
-    col_figura = columnas.get("PROM_AGTE") or columnas.get("PROMAGTE")
-    idx_ramo = _indices_ramo(df.columns)
-    if df.shape[1] > 23 and 23 not in idx_ramo:
-        idx_ramo.append(23)
-    idx_figura = None
+    idx_ini = _indice_columna(df.columns, "Ini_Ren")
+    idx_clasif = _indice_columna(df.columns, "Nueva clasif")
+    idx_desc = None
     for indice, nombre in enumerate(df.columns):
-        if _norm_nombre(nombre).replace(" ", "") in {"PROM_AGTE", "PROMAGTE"}:
-            idx_figura = indice
+        compacto = _norm_nombre(nombre).replace(".", "").replace(" ", "")
+        if "DESC" in compacto and "CPTO" in compacto:
+            idx_desc = indice
+            break
+        if compacto.replace("_", "") == "DESCCONCEPTO":
+            idx_desc = indice
+            break
+    idx_fecha = _indice_columna(df.columns, "Fecha")
+    idx_mes = _indice_columna(df.columns, "Mes", ultima=False)
+    idx_figura = _indice_columna(df.columns, "Prom_Agte", "PromAgte")
+    idx_ramo = _indices_ramo(df.columns)
+    for extra in (COL_EXCEL_RAMO_G, COL_EXCEL_RAMO_X):
+        if extra < df.shape[1] and extra not in idx_ramo:
+            idx_ramo.append(extra)
     registros = []
     for pos in range(len(df)):
-        fila = df.iloc[pos]
-        valores_ramo = [df.iat[pos, indice] for indice in idx_ramo if indice < df.shape[1]]
+        valores_ramo = []
+        if df.shape[1] > COL_EXCEL_RAMO_G:
+            valores_ramo.append(_valor_pos(df, pos, COL_EXCEL_RAMO_G))
+        for indice in idx_ramo:
+            if indice in (COL_EXCEL_RAMO_G, COL_EXCEL_RAMO_X):
+                continue
+            valores_ramo.append(_valor_pos(df, pos, indice))
+        if df.shape[1] > COL_EXCEL_RAMO_X:
+            valores_ramo.append(_valor_pos(df, pos, COL_EXCEL_RAMO_X))
         catalogo, original = _clasificar_ramos(valores_ramo)
         ramo = catalogo or original
         if not ramo:
             continue
-        figura = df.iat[pos, idx_figura] if idx_figura is not None else (
-            fila.get(col_figura) if col_figura else None
-        )
-        if _es_agente(figura) and not (catalogo == "GMM" and original == "VIDA"):
+        figura = _valor_pos(df, pos, idx_figura)
+        mismatch_gmm = catalogo == "GMM" and original == "VIDA"
+        if _es_agente(figura) and not mismatch_gmm:
             continue
-        ini_raw = fila.get(col_ini) if col_ini else None
-        desc = fila.get(col_desc) if col_desc else ""
-        clasif = fila.get(col_clasif) if col_clasif else None
+        ini_raw = _valor_pos(df, pos, idx_ini)
+        desc = _valor_pos(df, pos, idx_desc)
+        clasif = _valor_pos(df, pos, idx_clasif)
         if not clasif or str(clasif).strip() in {"", "nan", "None"}:
             clasif = clasificar_nueva_clasif(ini_raw, desc)
         clasif_n = _norm_nombre(clasif)
@@ -535,19 +573,22 @@ def extraer_bonos(ruta, anio):
                 ini = INI_PRIMER
         anio_fila = None
         mes = None
-        if col_fecha:
-            fecha = _parsear_fecha_bono(fila.get(col_fecha))
-            if fecha is not None:
-                anio_fila = int(fecha.year)
-                mes = int(fecha.month)
-        if mes is None and col_mes:
-            mes = _mes_numero(fila.get(col_mes))
+        fecha = _parsear_fecha_bono(_valor_pos(df, pos, idx_fecha))
+        if fecha is not None:
+            anio_fila = int(fecha.year)
+            mes = int(fecha.month)
+        if mes is None:
+            mes = _mes_numero(_valor_pos(df, pos, idx_mes))
         if anio_fila is None:
             anio_fila = anio
         anio_fila, mes = _mes_desfasado(anio_fila, mes)
-        clave_prom = _promotor(fila.get(col_prom) if col_prom else None)
-        if clave_prom is None and col_prima:
-            clave_prom = _promotor(fila.get(col_prima))
+        clave_prom = _promotor(_valor_pos(df, pos, idx_prom))
+        if clave_prom is None:
+            clave_prom = _promotor(_valor_pos(df, pos, idx_prima))
+        if clave_prom is None and df.shape[1] > 15:
+            clave_prom = _promotor(_valor_pos(df, pos, 15))
+        if clave_prom is None and df.shape[1] > 9:
+            clave_prom = _promotor(_valor_pos(df, pos, 9))
         if clave_prom is None:
             continue
         registros.append(
@@ -560,7 +601,7 @@ def extraer_bonos(ruta, anio):
                 "Concepto": concepto,
                 "Ramo": ramo,
                 "Ini_Ren": ini,
-                "Monto": fila.get(col_importe),
+                "Monto": _valor_pos(df, pos, idx_importe),
                 "Fuente": "Pagos_de_Bonos",
             }
         )
