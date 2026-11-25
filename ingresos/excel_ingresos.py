@@ -518,7 +518,6 @@ def _aplicar_promotor(ws):
 
 
 def _llenar_totales_promotor(ws):
-    """D-F / M-N (Total): 1er año y Renovación = Vida+GMM; cabecera = 1er+Ren."""
     pares = (
         ("E", "V", "AM"),
         ("F", "W", "AN"),
@@ -529,10 +528,21 @@ def _llenar_totales_promotor(ws):
         for total, vida, gmm in pares:
             ws[f"{total}{fila}"] = f"={vida}{fila}+{gmm}{fila}"
             ws[f"{total}{fila}"].number_format = FORMATO_MONTO
-    for dest, primer, renov in ((9, 17, 24), (10, 18, 25), (14, 21, 28)):
-        for total, _vida, _gmm in pares:
-            ws[f"{total}{dest}"] = f"={total}{primer}+{total}{renov}"
-            ws[f"{total}{dest}"].number_format = FORMATO_MONTO
+    zonas = (
+        ("E", "F", "M", "N"),
+        ("V", "W", "AD", "AE"),
+        ("AM", "AN", "AU", "AV"),
+    )
+    for cols in zonas:
+        for col in cols:
+            ws[f"{col}9"] = f"={col}17+{col}24"
+            ws[f"{col}10"] = f"={col}18+{col}25"
+            ws[f"{col}14"] = f"={col}21+{col}28"
+            for fila in (9, 10, 14):
+                ws[f"{col}{fila}"].number_format = FORMATO_MONTO
+    for col in ("V", "W", "AD", "AE", "AM", "AN", "AU", "AV"):
+        ws[f"{col}12"] = f"={col}9+{col}10"
+        ws[f"{col}12"].number_format = FORMATO_MONTO
 
 
 def llenar_plantilla(ruta_plantilla, ruta_salida, df_datos, anio, mes_corte):
