@@ -452,7 +452,7 @@ def _aplicar_promotor(ws):
                 bloque["ytd_ant1"],
                 bloque["ytd_act"],
             ):
-                ws[f"{col}{fila}"].number_format = "#,##0.00"
+                ws[f"{col}{fila}"].number_format = FORMATO_MONTO
             if prima_fila:
                 ws[f"{bloque['ratio_ant2']}{fila}"] = (
                     f"=IFERROR({bloque['anio_ant2']}{fila}/{bloque['anio_ant2']}{prima_fila},0)"
@@ -493,7 +493,7 @@ def _aplicar_promotor(ws):
                     ws[f"{col}{fila}"] = f"={suma_hijos}+{extra}"
                 else:
                     ws[f"{col}{fila}"] = "=" + suma_hijos
-                ws[f"{col}{fila}"].number_format = "#,##0.00"
+                ws[f"{col}{fila}"].number_format = FORMATO_MONTO
             prima = 14 if fila == 12 else (21 if fila == 19 else 28)
             ws[f"{bloque['ratio_ant2']}{fila}"] = (
                 f"=IFERROR({bloque['anio_ant2']}{fila}/{bloque['anio_ant2']}{prima},0)"
@@ -514,6 +514,25 @@ def _aplicar_promotor(ws):
                 bloque["ratio_ytd_act"],
             ):
                 ws[f"{col}{fila}"].number_format = "0.0%"
+    _llenar_totales_promotor(ws)
+
+
+def _llenar_totales_promotor(ws):
+    """D-F / M-N (Total): 1er año y Renovación = Vida+GMM; cabecera = 1er+Ren."""
+    pares = (
+        ("E", "V", "AM"),
+        ("F", "W", "AN"),
+        ("M", "AD", "AU"),
+        ("N", "AE", "AV"),
+    )
+    for fila in (11, 17, 18, 21, 24, 25, 28):
+        for total, vida, gmm in pares:
+            ws[f"{total}{fila}"] = f"={vida}{fila}+{gmm}{fila}"
+            ws[f"{total}{fila}"].number_format = FORMATO_MONTO
+    for dest, primer, renov in ((9, 17, 24), (10, 18, 25), (14, 21, 28)):
+        for total, _vida, _gmm in pares:
+            ws[f"{total}{dest}"] = f"={total}{primer}+{total}{renov}"
+            ws[f"{total}{dest}"].number_format = FORMATO_MONTO
 
 
 def llenar_plantilla(ruta_plantilla, ruta_salida, df_datos, anio, mes_corte):
