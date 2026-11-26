@@ -2,6 +2,7 @@ import shutil
 
 from openpyxl import load_workbook
 from openpyxl.formatting.rule import FormatObject, IconSet, Rule
+from openpyxl.styles import Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -137,7 +138,6 @@ HOJA2_BLOQUES = (
         "filas": {
             9: (CONCEPTO_COMISION, "VIDA", None, 14),
             10: (CONCEPTO_BONO, "VIDA", None, 14),
-            11: (CONCEPTO_APOYO, "VIDA", None, 14),
             14: (CONCEPTO_PRIMA, "VIDA", None, None),
             17: (CONCEPTO_COMISION, "VIDA", INI_PRIMER, 21),
             18: (CONCEPTO_BONO, "VIDA", INI_PRIMER, 21),
@@ -146,7 +146,7 @@ HOJA2_BLOQUES = (
             25: (CONCEPTO_BONO, "VIDA", INI_RENOV, 28),
             28: (CONCEPTO_PRIMA, "VIDA", INI_RENOV, None),
         },
-        "padres": {12: (9, 10, 11), 19: (17, 18), 26: (24, 25)},
+        "padres": {12: (9, 10), 19: (17, 18), 26: (24, 25)},
     },
     {
         "anio_ant2": "AM",
@@ -160,7 +160,6 @@ HOJA2_BLOQUES = (
         "filas": {
             9: (CONCEPTO_COMISION, "GMM", None, 14),
             10: (CONCEPTO_BONO, "GMM", None, 14),
-            11: (CONCEPTO_APOYO, "GMM", None, 14),
             14: (CONCEPTO_PRIMA, "GMM", None, None),
             17: (CONCEPTO_COMISION, "GMM", INI_PRIMER, 21),
             18: (CONCEPTO_BONO, "GMM", INI_PRIMER, 21),
@@ -169,7 +168,7 @@ HOJA2_BLOQUES = (
             25: (CONCEPTO_BONO, "GMM", INI_RENOV, 28),
             28: (CONCEPTO_PRIMA, "GMM", INI_RENOV, None),
         },
-        "padres": {12: (9, 10, 11), 19: (17, 18), 26: (24, 25)},
+        "padres": {12: (9, 10), 19: (17, 18), 26: (24, 25)},
     },
 )
 
@@ -421,6 +420,8 @@ def _aplicar_promotor(ws):
     )
     for celda, formula in encabezados:
         ws[celda] = f"={formula}"
+    ws["U16"] = "1er año"
+    ws["AL16"] = "1er año"
     for prefijo, anio_celda in (
         ("M", "Parametros!$B$4"),
         ("N", "Parametros!$B$1"),
@@ -482,7 +483,7 @@ def _aplicar_promotor(ws):
                 (bloque["ytd_act"], 0, '"<="&Parametros!$B$2'),
             ):
                 suma_hijos = "+".join(f"{col}{hijo}" for hijo in hijos)
-                if fila == 12:
+                if fila == 12 and ramo_padre is None:
                     extra = _formula_suma(
                         _anio_param(anio_off),
                         mes_expr,
@@ -515,6 +516,7 @@ def _aplicar_promotor(ws):
             ):
                 ws[f"{col}{fila}"].number_format = "0.0%"
     _llenar_totales_promotor(ws)
+    _ajustar_presentacion_promotor(ws)
 
 
 def _llenar_totales_promotor(ws):
@@ -524,7 +526,7 @@ def _llenar_totales_promotor(ws):
         ("M", "AD", "AU"),
         ("N", "AE", "AV"),
     )
-    for fila in (11, 17, 18, 21, 24, 25, 28):
+    for fila in (17, 18, 21, 24, 25, 28):
         for total, vida, gmm in pares:
             ws[f"{total}{fila}"] = f"={vida}{fila}+{gmm}{fila}"
             ws[f"{total}{fila}"].number_format = FORMATO_MONTO
@@ -543,6 +545,45 @@ def _llenar_totales_promotor(ws):
     for col in ("V", "W", "AD", "AE", "AM", "AN", "AU", "AV"):
         ws[f"{col}12"] = f"={col}9+{col}10"
         ws[f"{col}12"].number_format = FORMATO_MONTO
+
+
+def _ajustar_presentacion_promotor(ws):
+    borde = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
+    )
+    for fila in (14, 21):
+        for col in ("M", "N", "AD", "AE", "AU", "AV"):
+            ws[f"{col}{fila}"].border = borde
+    vacias = (
+        "V11",
+        "W11",
+        "Y11",
+        "AA11",
+        "AB11",
+        "AD11",
+        "AE11",
+        "AG11",
+        "AI11",
+        "AJ11",
+        "AM11",
+        "AN11",
+        "AP11",
+        "AR11",
+        "AS11",
+        "AU11",
+        "AV11",
+        "AX11",
+        "AZ11",
+        "BA11",
+    )
+    sin_borde = Border()
+    for coord in vacias:
+        ws[coord].value = None
+        ws[coord].border = sin_borde
+        ws[coord].number_format = "General"
 
 
 def llenar_plantilla(ruta_plantilla, ruta_salida, df_datos, anio, mes_corte):
