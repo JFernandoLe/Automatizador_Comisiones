@@ -173,6 +173,7 @@ HOJA2_BLOQUES = (
 )
 
 PROMOTOR_CELDA = f"'{HOJA_TABLERO}'!$C$3"
+FUENTE_GMM_RENOV = "GMM Renovacion"
 FORMATO_MONTO = "#,##0.0"
 FORMATO_CRECIMIENTO = "0.0%"
 FILAS_DATOS_H1 = range(9, 52)
@@ -207,7 +208,7 @@ COLUMNAS_MONTO_H1 = (
 COLUMNAS_CRECIMIENTO_H1 = ("L", "V", "AF", "AJ")
 
 
-def _formula_suma(anio_expr, mes_expr, concepto, ramo, ini_ren):
+def _formula_suma(anio_expr, mes_expr, concepto, ramo, ini_ren, fuente=None):
     partes = [
         "Datos[Monto]",
         f"Datos[Año],{anio_expr}",
@@ -219,12 +220,20 @@ def _formula_suma(anio_expr, mes_expr, concepto, ramo, ini_ren):
         partes.append(f'Datos[Ramo],"{ramo}"')
     if ini_ren:
         partes.append(f'Datos[Ini_Ren],"{ini_ren}"')
+    if fuente:
+        partes.append(f'Datos[Fuente],"{fuente}"')
     filtros = ",".join(partes)
     filtros_prom = f"{filtros},Datos[Promotoria],{PROMOTOR_CELDA}"
     cuerpo = (
         f'IF({PROMOTOR_CELDA}="TOTAL",SUMIFS({filtros}),SUMIFS({filtros_prom}))'
     )
     return f"=IFERROR({cuerpo}/1000000,0)"
+
+
+def _fuente_prima_promotor(concepto, ramo, ini):
+    if concepto == CONCEPTO_PRIMA and ramo == "GMM" and ini == INI_RENOV:
+        return FUENTE_GMM_RENOV
+    return None
 
 
 def _anio_param(offset):
@@ -435,17 +444,28 @@ def _aplicar_promotor(ws):
 
     for bloque in HOJA2_BLOQUES:
         for fila, (concepto, ramo, ini, prima_fila) in bloque["filas"].items():
+            fuente = _fuente_prima_promotor(concepto, ramo, ini)
             ws[f"{bloque['anio_ant2']}{fila}"] = _formula_suma(
-                _anio_param(-2), None, concepto, ramo, ini
+                _anio_param(-2), None, concepto, ramo, ini, fuente
             )
             ws[f"{bloque['anio_ant1']}{fila}"] = _formula_suma(
-                _anio_param(-1), None, concepto, ramo, ini
+                _anio_param(-1), None, concepto, ramo, ini, fuente
             )
             ws[f"{bloque['ytd_ant1']}{fila}"] = _formula_suma(
-                _anio_param(-1), '"<="&Parametros!$B$2', concepto, ramo, ini
+                _anio_param(-1),
+                '"<="&Parametros!$B$2',
+                concepto,
+                ramo,
+                ini,
+                fuente,
             )
             ws[f"{bloque['ytd_act']}{fila}"] = _formula_suma(
-                _anio_param(0), '"<="&Parametros!$B$2', concepto, ramo, ini
+                _anio_param(0),
+                '"<="&Parametros!$B$2',
+                concepto,
+                ramo,
+                ini,
+                fuente,
             )
             for col in (
                 bloque["anio_ant2"],
