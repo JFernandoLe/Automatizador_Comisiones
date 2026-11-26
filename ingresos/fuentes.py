@@ -1,4 +1,5 @@
-from datetime import datetime
+from collections import defaultdict
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -71,7 +72,6 @@ MAPA_PRIMAS = (
     ("PRIMORDIAL1ER", "GMM", INI_PRIMER),
     ("PRIMORDIALRENOV", "GMM", INI_RENOV),
     ("GMMPRIMER", "GMM", INI_PRIMER),
-    ("GMMRENOV", "GMM", INI_RENOV),
     ("VIDAPRIMER", "VIDA", INI_PRIMER),
     ("VIDARENOV", "VIDA", INI_RENOV),
 )
@@ -87,6 +87,31 @@ def _a_entero(valor):
         return int(float(str(valor).strip()))
     except (TypeError, ValueError):
         return None
+
+
+def _anio_desde_valor(valor):
+    if valor is None:
+        return None
+    if isinstance(valor, datetime):
+        return int(valor.year)
+    if isinstance(valor, date):
+        return int(valor.year)
+    anio = _a_entero(valor)
+    if anio is not None and 1990 <= anio <= 2100:
+        return anio
+    try:
+        if hasattr(valor, "year"):
+            anio = int(valor.year)
+            if 1990 <= anio <= 2100:
+                return anio
+    except (TypeError, ValueError):
+        pass
+    texto = str(valor).strip()
+    for token in texto.replace("_", " ").replace("-", " ").split():
+        anio = _a_entero(token)
+        if anio is not None and 1990 <= anio <= 2100:
+            return anio
+    return None
 
 
 def _mes_desfasado(anio, mes):
@@ -436,6 +461,11 @@ def leer_datos_existente(ruta):
                         else pd.Series([None] * len(df))
                     ),
                     "Monto": pd.to_numeric(df[columnas["MONTO"]], errors="coerce"),
+                    "Fuente": (
+                        df[columnas["FUENTE"]]
+                        if "FUENTE" in columnas
+                        else pd.Series([None] * len(df))
+                    ),
                 }
             )
             return _filas(trabajo, agrupar=False, exigir_promotor=False)
@@ -652,8 +682,15 @@ def _clave_titulo(titulo):
     return texto
 
 
+def _es_gmm_renovacion_base(titulo):
+    clave = _clave_titulo(titulo)
+    return "GMMRENOV" in clave and "PRIMORDIAL" not in clave
+
+
 def _mapear_titulo_prima(titulo):
     clave = _clave_titulo(titulo)
+    if _es_gmm_renovacion_base(titulo):
+        return None
     for fragmento, ramo, ini in MAPA_PRIMAS:
         if fragmento in clave:
             return ramo, ini
@@ -662,13 +699,52 @@ def _mapear_titulo_prima(titulo):
     if "PRIMORDIAL" in clave:
         return "GMM", INI_RENOV if "RENOV" in clave else INI_PRIMER
     if "GMM" in clave:
-        return "GMM", INI_RENOV if "RENOV" in clave else INI_PRIMER
+        return "GMM", INI_PRIMER
     if "VIDA" in clave:
         return "VIDA", INI_RENOV if "RENOV" in clave else INI_PRIMER
     return None
 
 
-def extraer_primas(ruta):
+def _valor_fila(fila, indice):
+    if fila is None or indice < 0 or indice >= len(fila):
+        return None
+    return fila[indice]
+
+
+def _anio_encabezado_tabla(filas, indice):
+    fila0 = filas[0] if filas else None
+    for candidato in (
+        _valor_fila(fila0, indice - 1) if indice else None,
+        _valor_fila(fila0, indice),
+    ):
+        anio = _anio_desde_valor(candidato)
+        if anio is not None:
+            return anio
+    return None
+
+
+def _asignar_anios_tablas_pp(tablas, anio_paquete):
+    if not tablas:
+        return tablas
+    if anio_paquete is None:
+        return tablas
+    anio_paquete = int(anio_paquete)
+    por_titulo = defaultdict(list)
+    for tabla in tablas:
+        por_titulo[tabla["clave_titulo"]].append(tabla)
+    for grupo in por_titulo.values():
+        grupo.sort(key=lambda item: item["indice"])
+        if len(grupo) == 1:
+            grupo[0]["anio"] = anio_paquete
+        else:
+            grupo[0]["anio"] = anio_paquete
+            grupo[1]["anio"] = anio_paquete - 1
+            for extra in grupo[2:]:
+                extra["anio"] = extra["anio_encabezado"] or extra["anio"]
+    return tablas
+
+
+def extraer_primas(ruta, anio=None):
     if not Path(ruta).exists():
         return pd.DataFrame(columns=COLUMNAS_DATOS)
     wb = load_workbook(ruta, data_only=True, read_only=True)
@@ -681,16 +757,17 @@ def extraer_primas(ruta):
     if len(filas) < 3:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
     encabezado = filas[1]
-    registros = []
+    tablas = []
     for indice, valor in enumerate(encabezado):
         if _norm_nombre(valor) != "PROMOTOR":
             continue
-        anio = _a_entero(filas[0][indice - 1] if indice else None)
-        titulo = filas[0][indice] if indice < len(filas[0]) else None
-        mapeo = _mapear_titulo_prima(titulo or "")
-        if not mapeo or anio is None:
+        titulo = _valor_fila(filas[0], indice)
+        if _es_gmm_renovacion_base(titulo or ""):
             continue
-        ramo, ini = mapeo
+        mapeo = _mapear_titulo_prima(titulo or "")
+        if not mapeo:
+            continue
+        anio_encabezado = _anio_encabezado_tabla(filas, indice)
         meses = {}
         col = indice + 2
         while col < len(encabezado):
@@ -699,18 +776,38 @@ def extraer_primas(ruta):
                 break
             meses[col] = mes
             col += 1
+        tablas.append(
+            {
+                "indice": indice,
+                "titulo": titulo,
+                "clave_titulo": _clave_titulo(titulo or ""),
+                "anio_encabezado": anio_encabezado,
+                "anio": anio_encabezado,
+                "mapeo": mapeo,
+                "meses": meses,
+            }
+        )
+    _asignar_anios_tablas_pp(tablas, anio)
+    registros = []
+    for tabla in tablas:
+        anio_tabla = tabla["anio"]
+        if anio_tabla is None:
+            continue
+        ramo, ini = tabla["mapeo"]
+        indice = tabla["indice"]
+        titulo = tabla["titulo"]
         for fila in filas[2:]:
             if indice >= len(fila):
                 continue
             promotor = _promotor(fila[indice])
             if promotor is None:
                 continue
-            for col_mes, mes in meses.items():
+            for col_mes, mes in tabla["meses"].items():
                 if col_mes >= len(fila):
                     continue
                 registros.append(
                     {
-                        "Año": anio,
+                        "Año": anio_tabla,
                         "Mes": mes,
                         "Promotor": promotor,
                         "Promotoria": promotor,
@@ -724,7 +821,22 @@ def extraer_primas(ruta):
     return _filas(registros)
 
 
-def extraer_paquete(ruta, anio, actualizar_estado=None, avisos=None):
+def _sin_gmm_renovacion_prima(df):
+    if df is None or df.empty or "Fuente" not in df.columns:
+        return df
+    trabajo = df.copy()
+    fuente = trabajo["Fuente"].map(_clave_titulo)
+    omitir = (
+        (trabajo["Concepto"] == CONCEPTO_PRIMA)
+        & fuente.str.contains("GMMRENOV", na=False)
+        & ~fuente.str.contains("PRIMORDIAL", na=False)
+    )
+    return trabajo.loc[~omitir].reset_index(drop=True)
+
+
+def extraer_paquete(
+    ruta, anio, actualizar_estado=None, avisos=None, anios_prima_excluir=None
+):
     if not ruta or not Path(ruta).exists():
         return pd.DataFrame(columns=COLUMNAS_DATOS)
     _avisar(actualizar_estado, f"Leyendo {Path(ruta).name}...", 20)
@@ -733,20 +845,36 @@ def extraer_paquete(ruta, anio, actualizar_estado=None, avisos=None):
     partes.append(extraer_comision_base(ruta, anio))
     partes.append(extraer_bonos(ruta, anio, avisos=avisos))
     partes.append(extraer_anp(ruta))
-    partes.append(extraer_primas(ruta))
+    primas = extraer_primas(ruta, anio)
+    if anios_prima_excluir and not primas.empty:
+        primas = primas[~primas["Año"].isin(anios_prima_excluir)]
+    partes.append(primas)
     partes = [parte for parte in partes if parte is not None and not parte.empty]
     if not partes:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
-    return _completar_columnas(pd.concat(partes, ignore_index=True))
+    return _sin_gmm_renovacion_prima(
+        _completar_columnas(pd.concat(partes, ignore_index=True))
+    )
 
 
 def consolidar_datos(paquetes, actualizar_estado=None, avisos=None):
     partes = []
+    anios_prima = set()
     for anio, ruta in paquetes:
         if not ruta:
             continue
-        partes.append(extraer_paquete(ruta, anio, actualizar_estado, avisos=avisos))
-    partes = [parte for parte in partes if not parte.empty]
+        parte = extraer_paquete(
+            ruta,
+            anio,
+            actualizar_estado,
+            avisos=avisos,
+            anios_prima_excluir=anios_prima,
+        )
+        if parte.empty:
+            continue
+        primas = parte[parte["Concepto"] == CONCEPTO_PRIMA]
+        anios_prima.update(valor for valor in primas["Año"].dropna().tolist())
+        partes.append(parte)
     if not partes:
         return pd.DataFrame(columns=COLUMNAS_DATOS)
     return _completar_columnas(pd.concat(partes, ignore_index=True))
