@@ -297,6 +297,7 @@ def guardar_comision(
     combinaciones=None,
     df_base=None,
     df_base_anterior=None,
+    df_base_dos_anios=None,
 ):
     wb = Workbook()
     ws = wb.active
@@ -324,6 +325,10 @@ def guardar_comision(
     if df_base_anterior is not None and not df_base_anterior.empty:
         _escribir_comision_base(
             wb, df_base_anterior, nombre_base="Comision Base Anterior"
+        )
+    if df_base_dos_anios is not None and not df_base_dos_anios.empty:
+        _escribir_comision_base(
+            wb, df_base_dos_anios, nombre_base="Comision Base Hace dos años"
         )
     _escribir_pagos_bonos(wb, df_bonos, combinaciones=combinaciones)
     wb.save(ruta)

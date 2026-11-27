@@ -462,7 +462,12 @@ def extraer_comision_base(ruta, anio):
         if "COMISION" not in columnas:
             continue
         nombre_hoja = _norm_nombre(hoja)
-        anio_hoja = (int(anio) - 1) if "ANTERIOR" in nombre_hoja and anio else anio
+        if anio and ("HACE DOS" in nombre_hoja or "DOS ANOS" in nombre_hoja):
+            anio_hoja = int(anio) - 2
+        elif anio and "ANTERIOR" in nombre_hoja:
+            anio_hoja = int(anio) - 1
+        else:
+            anio_hoja = anio
         if "AÑO" in columnas:
             anios_col = df[columnas["AÑO"]].map(_a_entero)
         else:

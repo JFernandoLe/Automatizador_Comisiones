@@ -11,6 +11,11 @@ COLORES = {
     "exito": "#1B7A4E",
     "error": "#C0392B",
     "pista": "#E6EAEF",
+    "aviso": "#B26A00",
+    "aviso_fondo": "#FFF4E0",
+    "info_fondo": "#E8F6FC",
+    "exito_fondo": "#E6F4EC",
+    "neutro_fondo": "#EEF2F5",
 }
 
 

@@ -94,17 +94,17 @@ def _mapear_columnas_comision_base(df):
     ]
 
 
-def leer_comision_base_externa(ruta, hojas=None):
+def leer_comision_base_externa(ruta, hojas=None, etiqueta="Base de comisiones FY"):
     if not ruta:
         return None
     try:
         disponibles = obtener_hojas(ruta)
     except Exception as error:
         raise ValueError(
-            f"No se pudo leer la Base de comisiones FY del año anterior: {error}"
+            f"No se pudo leer la {etiqueta}: {error}"
         ) from error
     if not disponibles:
-        raise ValueError("La Base de comisiones FY del año anterior no tiene hojas.")
+        raise ValueError(f"La {etiqueta} no tiene hojas.")
     if hojas:
         candidatas = [hoja for hoja in hojas if hoja in disponibles]
     else:
@@ -127,7 +127,7 @@ def leer_comision_base_externa(ruta, hojas=None):
         bloques.append(tabla)
     if not bloques:
         raise ValueError(
-            "La Base de comisiones FY del año anterior no tiene la hoja "
+            f"La {etiqueta} no tiene la hoja "
             "Comision Base (Conducto, Mes, TIPO COMISIÓN, Tipo, PROMOTOR, "
             "CLAVE, COMISION, PROMOTORIA)."
         )
@@ -165,6 +165,10 @@ def generar_comision_fase2(
     hojas_bonos_anterior=None,
     ruta_comision_anterior=None,
     hojas_comision_anterior=None,
+    ruta_bonos_dos_anios=None,
+    hojas_bonos_dos_anios=None,
+    ruta_comision_dos_anios=None,
+    hojas_comision_dos_anios=None,
 ):
     _avisar(actualizar_estado, "Leyendo Reporte VIDA Final...", 6)
     df_vida = leer_reporte(ruta_vida, hojas_vida)
@@ -178,8 +182,12 @@ def generar_comision_fase2(
     df_bonos = leer_bonos(ruta_bonos, hojas_bonos)
     df_bonos_anterior = None
     if ruta_bonos_anterior:
-        _avisar(actualizar_estado, "Leyendo Bonos del año anterior...", 47)
+        _avisar(actualizar_estado, "Leyendo Bonos FY del año anterior...", 47)
         df_bonos_anterior = leer_bonos(ruta_bonos_anterior, hojas_bonos_anterior)
+    df_bonos_dos = None
+    if ruta_bonos_dos_anios:
+        _avisar(actualizar_estado, "Leyendo Bonos FY de hace dos años...", 49)
+        df_bonos_dos = leer_bonos(ruta_bonos_dos_anios, hojas_bonos_dos_anios)
     _avisar(actualizar_estado, "Leyendo Catálogo de clasificaciones...", 52)
     clasif_map = cargar_clasificaciones(ruta_clasif, hojas_clasif)
 
@@ -193,7 +201,17 @@ def generar_comision_fase2(
     if ruta_comision_anterior:
         _avisar(actualizar_estado, "Leyendo Comision Base FY del año anterior...", 81)
         tabla_base_anterior = leer_comision_base_externa(
-            ruta_comision_anterior, hojas_comision_anterior
+            ruta_comision_anterior,
+            hojas_comision_anterior,
+            etiqueta="Base de comisiones FY del año anterior",
+        )
+    tabla_base_dos = None
+    if ruta_comision_dos_anios:
+        _avisar(actualizar_estado, "Leyendo Comision Base FY de hace dos años...", 82)
+        tabla_base_dos = leer_comision_base_externa(
+            ruta_comision_dos_anios,
+            hojas_comision_dos_anios,
+            etiqueta="Base de comisiones FY de hace dos años",
         )
     _avisar(actualizar_estado, "Procesando Pagos de Bonos...", 84)
     tabla_bonos = construir_pagos_bonos(df_bonos, dist_map, pfpm_map, clasif_map)
@@ -204,6 +222,12 @@ def generar_comision_fase2(
         )
         avisos.extend(avisos_cpto_sin_catalogo(tabla_bonos_ant))
         tabla_bonos = pd.concat([tabla_bonos, tabla_bonos_ant], ignore_index=True)
+    if df_bonos_dos is not None and not df_bonos_dos.empty:
+        tabla_bonos_dos = construir_pagos_bonos(
+            df_bonos_dos, dist_map, pfpm_map, clasif_map
+        )
+        avisos.extend(avisos_cpto_sin_catalogo(tabla_bonos_dos))
+        tabla_bonos = pd.concat([tabla_bonos, tabla_bonos_dos], ignore_index=True)
 
     _avisar(actualizar_estado, "Generando Comision.xlsx...", 93)
     ruta = guardar_comision(
@@ -214,6 +238,7 @@ def generar_comision_fase2(
         combinaciones=combinaciones,
         df_base=tabla_base,
         df_base_anterior=tabla_base_anterior,
+        df_base_dos_anios=tabla_base_dos,
     )
     _avisar(actualizar_estado, "Fase 2 generada", 100)
     print(

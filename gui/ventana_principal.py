@@ -9,6 +9,10 @@ from tkinter import filedialog, messagebox, ttk
 from conversores.preparar import es_entrada_txt
 from gui.componentes import (
     crear_area_desplazable,
+    crear_boton_primario,
+    crear_encabezado_paso,
+    crear_nota,
+    crear_seccion,
     crear_selector_archivo,
     crear_selector_multiples,
     llenar_checks,
@@ -96,7 +100,9 @@ class VentanaPrincipal:
             "catalogos": None,
             "bonos": None,
             "bonos_anterior": None,
+            "bonos_dos_anios": None,
             "comision_anterior": None,
+            "comision_dos_anios": None,
             "clasif": None,
         }
         self.checks_f2_vida = []
@@ -105,26 +111,30 @@ class VentanaPrincipal:
         self.checks_f2_catalogos = []
         self.checks_f2_bonos = []
         self.checks_f2_bonos_anterior = []
+        self.checks_f2_bonos_dos_anios = []
         self.checks_f2_comision_anterior = []
+        self.checks_f2_comision_dos_anios = []
         self.checks_f2_clasif = []
         self.checks_f2_figuras = []
         self.checks_f2_ramos = []
         self.checks_f2_conceptos = []
-        self.carpetas_pp = {"actual": None, "anterior": None}
-        self.pp_corte = {"actual": None, "anterior": None}
+        self.carpetas_pp = {"actual": None, "anterior": None, "dos": None}
+        self.pp_corte = {"actual": None, "anterior": None, "dos": None}
         self.entradas_pp = {}
-        self.pp_tipos = {"actual": {}, "anterior": {}}
-        self.pp_rutas = {"actual": {}, "anterior": {}}
-        self.pp_extras_ids = {"actual": [], "anterior": []}
-        self.pp_extra_seq = {"actual": 0, "anterior": 0}
+        self.pp_tipos = {"actual": {}, "anterior": {}, "dos": {}}
+        self.pp_rutas = {"actual": {}, "anterior": {}, "dos": {}}
+        self.pp_extras_ids = {"actual": [], "anterior": [], "dos": []}
+        self.pp_extra_seq = {"actual": 0, "anterior": 0, "dos": 0}
         self.pp_frames_extras = {}
         self.archivos_anp = []
         self.archivos_anp_anterior = []
+        self.archivos_anp_dos = []
         self.archivos_ingresos = {"actual": None, "anterior": None, "dos": None}
         self.anio_ingresos = tk.IntVar(value=datetime.now().year)
         self.mes_corte_ingresos = tk.IntVar(value=datetime.now().month)
         self.checks_anp = []
         self.checks_anp_anterior = []
+        self.checks_anp_dos = []
         self.incluir_subcarpetas_anp = tk.BooleanVar(value=True)
         self._ultimo_periodo_anp = (
             datetime.now().year,
@@ -146,6 +156,9 @@ class VentanaPrincipal:
         self.checks_pc_tipo = []
         self.checks_pc_catalogos = []
 
+        self._autollenados_fase2 = set()
+        self._ingresos_autollenado = False
+
         self.modo_proceso_completo = False
         self._progreso_global = False
         self._progreso_minimo = 0
@@ -163,7 +176,7 @@ class VentanaPrincipal:
 
     def _configurar_ventana(self):
         self.root.title("CommiFlow")
-        self.root.geometry("1080x780")
+        self.root.geometry("1180x820")
         self.root.minsize(920, 680)
         style = ttk.Style()
         aplicar_estilos(self.root, style)
@@ -215,12 +228,12 @@ class VentanaPrincipal:
         self.tab_proceso_total = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_ingresos = ttk.Frame(self.notebook, style="Fondo.TFrame")
         self.tab_acerca = ttk.Frame(self.notebook, style="Fondo.TFrame")
-        self.notebook.add(self.tab_completo, text="Proceso")
-        self.notebook.add(self.tab_fase2, text="Comisiones y Bonos")
-        self.notebook.add(self.tab_bases_pp, text="Bases PP")
-        self.notebook.add(self.tab_base_anp, text="Base ANP")
-        self.notebook.add(self.tab_proceso_total, text="Proceso Completo")
-        self.notebook.add(self.tab_ingresos, text="Ingresos vs Ventas")
+        self.notebook.add(self.tab_completo, text="1 · Proceso")
+        self.notebook.add(self.tab_fase2, text="2 · Comisiones y Bonos")
+        self.notebook.add(self.tab_bases_pp, text="3 · Bases PP")
+        self.notebook.add(self.tab_base_anp, text="4 · Base ANP")
+        self.notebook.add(self.tab_proceso_total, text="5 · Generar CommiFlow")
+        self.notebook.add(self.tab_ingresos, text="6 · Ingresos vs Ventas")
         self.notebook.add(self.tab_acerca, text="Acerca de")
 
         self.tab_bases = ttk.Frame(self.root)
@@ -300,16 +313,16 @@ class VentanaPrincipal:
 
     def _crear_tab_completo(self):
         contenido = crear_area_desplazable(self.tab_completo, usar_rueda=True)
+        self._crear_guia_flujo(contenido)
         self._crear_instrucciones(contenido)
 
-        ttk.Label(contenido, text="Archivos de entrada", style="Section.TLabel").pack(
-            anchor="w", padx=28, pady=(8, 2)
-        )
-        ttk.Label(
+        crear_seccion(
             contenido,
-            text="Seleccione cada archivo o carpeta que CommiFlow necesita para el proceso.",
-            style="Hint.TLabel",
-        ).pack(anchor="w", padx=28, pady=(0, 8))
+            "Bases del mes",
+            "Archivos originales del mes de corte. Puede elegir uno o varios "
+            "Excel, o una carpeta completa.",
+            primera=True,
+        )
 
         self.entrada_pc_vida = crear_selector_multiples(
             contenido,
@@ -317,6 +330,7 @@ class VentanaPrincipal:
             lambda: self._seleccionar_archivos("vida"),
             lambda: self._seleccionar_carpeta("vida"),
             ayuda="Uno o varios Excel originales, o una carpeta.",
+            etiquetas=("requerido",),
         )
         self.frame_pc_vida_hojas = self._marco_hojas(contenido, "Hojas de Base VIDA")
 
@@ -326,6 +340,7 @@ class VentanaPrincipal:
             lambda: self._seleccionar_archivos("gmm"),
             lambda: self._seleccionar_carpeta("gmm"),
             ayuda="Uno o varios Excel originales, o una carpeta.",
+            etiquetas=("requerido",),
         )
         self.frame_pc_gmm_hojas = self._marco_hojas(contenido, "Hojas de Base GMM")
 
@@ -334,7 +349,8 @@ class VentanaPrincipal:
             "Archivo SAA",
             lambda: self._seleccionar_archivos("saa"),
             lambda: self._seleccionar_carpeta("saa"),
-            ayuda="Uno o varios TXT o Excel, o una carpeta.",
+            ayuda="Uno o varios TXT o Excel, o una carpeta. Los TXT no requieren elegir hojas.",
+            etiquetas=("requerido",),
         )
         self.frame_pc_saa_hojas = self._marco_hojas(contenido, "Hojas de SAA")
 
@@ -344,25 +360,24 @@ class VentanaPrincipal:
             lambda: self._seleccionar_archivos("manuales"),
             lambda: self._seleccionar_carpeta("manuales"),
             ayuda="Uno o varios Excel (.xlsx, .xls o .xlsb), o una carpeta.",
+            etiquetas=("requerido",),
         )
         self.frame_pc_manuales_hojas = self._marco_hojas(
             contenido, "Hojas de Acumulado de Comisiones"
         )
 
-        ttk.Label(
-            contenido, text="Archivos de referencia y catálogos", style="Section.TLabel"
-        ).pack(anchor="w", padx=28, pady=(18, 2))
-        ttk.Label(
+        crear_seccion(
             contenido,
-            text="Estos archivos se utilizan al generar el reporte final.",
-            style="Hint.TLabel",
-        ).pack(anchor="w", padx=28, pady=(0, 8))
+            "Referencias y catálogos",
+            "Se usan al armar el reporte final VIDA / GMM.",
+        )
 
         self.entrada_pc_vlsp = crear_selector_archivo(
             contenido,
             "Archivo VLSP",
             lambda: self._seleccionar_archivo("vlsp"),
-            ayuda="Seleccione un archivo Excel.",
+            ayuda="Archivo Excel.",
+            etiquetas=("requerido",),
         )
         self.frame_pc_vlsp_hojas = self._marco_hojas(contenido, "Hojas VLSP")
 
@@ -370,7 +385,8 @@ class VentanaPrincipal:
             contenido,
             "Catálogo Estatus Pólizas",
             lambda: self._seleccionar_archivo("tipo"),
-            ayuda="Seleccione un archivo Excel.",
+            ayuda="Archivo Excel.",
+            etiquetas=("requerido",),
         )
         self.frame_pc_tipo_hojas = self._marco_hojas(
             contenido, "Hojas de Catálogo Estatus Pólizas"
@@ -380,97 +396,98 @@ class VentanaPrincipal:
             contenido,
             "Archivo único de Catálogos",
             lambda: self._seleccionar_archivo("catalogos"),
-            ayuda="Debe incluir las hojas PFPM, CONCEPTOS_VIDA y CONCEPTOS_GMM.",
+            ayuda="Debe incluir las hojas PFPM, CONCEPTOS_VIDA y CONCEPTOS_GMM. "
+            "Se reutiliza en la pestaña 2 (no tiene que cargarlo otra vez).",
+            etiquetas=("requerido",),
         )
         self.frame_pc_catalogos_hojas = self._marco_hojas(contenido, "Hojas de Catálogos")
 
-        boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
-        boton_frame.pack(pady=(24, 36))
-        self.boton_proceso_completo = tk.Button(
-            boton_frame,
-            text="Ejecutar CommiFlow",
-            command=self.ejecutar_proceso_completo,
-            bg=COLORES["primario"],
-            fg="#FFFFFF",
-            activebackground=COLORES["primario_hover"],
-            activeforeground="#FFFFFF",
-            font=("Segoe UI Semibold", 12),
-            relief="flat",
-            bd=0,
-            cursor="hand2",
-            padx=32,
-            pady=11,
+        crear_nota(
+            contenido,
+            "¿Va a generar el CommiFlow completo? No pulse este botón: siga a la "
+            "pestaña 2. Este botón sirve solo para obtener los reportes VIDA Final "
+            "y GMM Final por separado.",
+            tipo="info",
         )
-        self.boton_proceso_completo.pack()
-        self.boton_proceso_completo.bind(
-            "<Enter>",
-            lambda _e: self.boton_proceso_completo.config(
-                bg=COLORES["primario_hover"]
+        self.boton_proceso_completo = crear_boton_primario(
+            contenido,
+            "Ejecutar solo este paso",
+            self.ejecutar_proceso_completo,
+            ayuda="Genera Reporte VIDA Final y Reporte GMM Final.",
+        )
+
+    def _crear_guia_flujo(self, parent):
+        exterior = tk.Frame(parent, bg=COLORES["fondo"])
+        exterior.pack(fill="x", padx=28, pady=(18, 0))
+        tk.Label(
+            exterior,
+            text="Ruta recomendada",
+            fg=COLORES["muted"],
+            bg=COLORES["fondo"],
+            font=("Segoe UI Semibold", 9),
+        ).pack(anchor="w", pady=(0, 6))
+        fila = tk.Frame(exterior, bg=COLORES["fondo"])
+        fila.pack(fill="x")
+        pasos = (
+            ("1", "Proceso", "Cargar"),
+            ("2", "Comisiones y Bonos", "Cargar"),
+            ("3", "Bases PP", "Cargar"),
+            ("4", "Base ANP", "Cargar"),
+            ("5", "Generar CommiFlow", "Ejecutar"),
+            ("6", "Ingresos vs Ventas", "Ejecutar"),
+        )
+        for indice, (numero, titulo, accion) in enumerate(pasos):
+            ejecutar = accion == "Ejecutar"
+            caja = tk.Frame(
+                fila,
+                bg=COLORES["primario"] if ejecutar else COLORES["tarjeta"],
+                highlightbackground=COLORES["borde"],
+                highlightthickness=0 if ejecutar else 1,
             )
-            if str(self.boton_proceso_completo["state"]) == "normal"
-            else None,
-        )
-        self.boton_proceso_completo.bind(
-            "<Leave>",
-            lambda _e: self.boton_proceso_completo.config(bg=COLORES["primario"])
-            if str(self.boton_proceso_completo["state"]) == "normal"
-            else None,
-        )
+            caja.pack(side="left", fill="both", expand=True)
+            color_texto = "#FFFFFF" if ejecutar else COLORES["texto"]
+            color_sub = "#E8F6FC" if ejecutar else COLORES["muted"]
+            tk.Label(
+                caja,
+                text=f"{numero}. {titulo}",
+                fg=color_texto,
+                bg=caja["bg"],
+                font=("Segoe UI Semibold", 9),
+            ).pack(padx=6, pady=(6, 0))
+            tk.Label(
+                caja,
+                text="Ejecutar" if ejecutar else "Cargar archivos",
+                fg=color_sub,
+                bg=caja["bg"],
+                font=("Segoe UI", 8),
+            ).pack(padx=6, pady=(0, 6))
+            if indice < len(pasos) - 1:
+                tk.Label(
+                    fila,
+                    text="›",
+                    fg=COLORES["muted"],
+                    bg=COLORES["fondo"],
+                    font=("Segoe UI", 14),
+                ).pack(side="left", padx=3)
 
     def _crear_instrucciones(self, parent):
-        exterior = tk.Frame(parent, bg=COLORES["fondo"])
-        exterior.pack(fill="x", padx=28, pady=(18, 10))
-        borde = tk.Frame(exterior, bg=COLORES["borde"])
-        borde.pack(fill="x")
-        tarjeta = tk.Frame(borde, bg=COLORES["tarjeta"])
-        tarjeta.pack(fill="x", padx=1, pady=1)
-
-        acento = tk.Frame(tarjeta, bg=COLORES["primario"], width=4)
-        acento.pack(side="left", fill="y")
-
-        cuerpo = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
-        cuerpo.pack(fill="x", padx=16, pady=14)
-
-        ttk.Label(
-            cuerpo,
-            text="¿Cómo utilizar CommiFlow?",
-            style="CardTitle.TLabel",
-        ).pack(anchor="w")
-        ttk.Label(
-            cuerpo,
-            text="Siga estos pasos en el orden indicado. El proceso no cambia: solo se muestra con mayor claridad.",
-            style="Muted.TLabel",
-        ).pack(anchor="w", pady=(2, 10))
-
-        pasos = [
-            (
-                "1. Selecciona los archivos de entrada",
-                "Carga Base VIDA, Base GMM, el archivo SAA (TXT o Excel), Acumulado de Comisiones, VLSP, Catálogo Estatus Pólizas y el archivo único de Catálogos.",
+        crear_encabezado_paso(
+            parent,
+            1,
+            "Proceso · Bases SAP, comisiones y reporte VIDA / GMM",
+            "Primer paso de CommiFlow. Aquí se cargan las bases del mes y los "
+            "catálogos. Los archivos que elija se guardan y se usan "
+            "automáticamente en la pestaña 5 (Generar CommiFlow).",
+            resultado="Reporte VIDA Final y Reporte GMM Final (insumo de la pestaña 2).",
+            pasos=(
+                "Seleccione cada archivo o carpeta marcada como Requerido.",
+                "Si un Excel tiene varias hojas, marque las que se deben procesar. "
+                "Con varios archivos de VIDA, GMM o Acumulado se consolidan todas "
+                "las hojas de cada uno.",
+                "Continúe con la pestaña 2. Solo pulse «Ejecutar solo este paso» "
+                "si necesita los reportes VIDA / GMM por separado.",
             ),
-            (
-                "2. Selecciona las hojas correspondientes",
-                "Si un Excel tiene varias hojas, marque cuáles desea procesar. En carpeta o varios archivos de VIDA, GMM o Acumulado se consolidan todas las hojas de cada archivo. El SAA admite uno o varios TXT y/o Excel: los TXT se consolidan y no requieren hojas; si hay Excel, marque las hojas de esos Excel.",
-            ),
-            (
-                "3. Ejecuta CommiFlow",
-                "Pulse Ejecutar CommiFlow para iniciar el procesamiento.",
-            ),
-            (
-                "4. Espera a que finalice el proceso",
-                "CommiFlow preparará los archivos, procesará las bases VIDA y GMM, el SAA, el Acumulado, VLSP, Catálogo Estatus Pólizas, Catálogos y generará los archivos de salida.",
-            ),
-            (
-                "5. Revisa los resultados",
-                "Al finalizar se indicará que el proceso terminó correctamente. Si ocurre un error, se mostrará el mensaje correspondiente.",
-            ),
-        ]
-        for titulo, detalle in pasos:
-            ttk.Label(cuerpo, text=titulo, style="CardTitle.TLabel").pack(
-                anchor="w", pady=(4, 0)
-            )
-            ttk.Label(cuerpo, text=detalle, style="Muted.TLabel", wraplength=900).pack(
-                anchor="w"
-            )
+        )
 
     @staticmethod
     def _marco_hojas(parent, titulo):
@@ -521,65 +538,38 @@ class VentanaPrincipal:
     def _crear_tab_fase2(self):
         contenido = crear_area_desplazable(self.tab_fase2)
 
-        exterior = tk.Frame(contenido, bg=COLORES["fondo"])
-        exterior.pack(fill="x", padx=28, pady=(18, 10))
-        borde = tk.Frame(exterior, bg=COLORES["borde"])
-        borde.pack(fill="x")
-        tarjeta = tk.Frame(borde, bg=COLORES["tarjeta"])
-        tarjeta.pack(fill="x", padx=1, pady=1)
-        acento = tk.Frame(tarjeta, bg=COLORES["primario"], width=4)
-        acento.pack(side="left", fill="y")
-        cuerpo = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
-        cuerpo.pack(fill="x", padx=16, pady=14)
-        ttk.Label(
-            cuerpo, text="Comisiones y Bonos", style="CardTitle.TLabel"
-        ).pack(anchor="w")
-        ttk.Label(
-            cuerpo,
-            text=(
-                "Usa los reportes finales de la Fase 1, Distribución Comercial, "
-                "catálogos y Bonos. Pida también Bonos y Comision Base del año "
-                "anterior (esta primera corrida no hay CommiFlow del año pasado). "
-                "El resultado se guarda como Comision.xlsx con Pagos_de_Bonos y "
-                "Comision Base (actual y anterior)."
+        crear_encabezado_paso(
+            contenido,
+            2,
+            "Comisiones y Bonos",
+            "Cruza el reporte VIDA / GMM con Distribución Comercial, catálogos y "
+            "Bonos para armar la Comisión Base y los Pagos de Bonos del año "
+            "actual, del año anterior y de hace dos años.",
+            resultado="Comision.xlsx (Pagos_de_Bonos y Comision Base actual, anterior "
+            "y hace dos años).",
+            pasos=(
+                "Cargue las referencias y los Bonos del año actual.",
+                "Cargue los archivos de años anteriores con el año COMPLETO "
+                "(enero a diciembre), no el acumulado al mes de corte.",
+                "Elija las combinaciones de tablas y continúe con la pestaña 3.",
             ),
-            style="Muted.TLabel",
-            wraplength=900,
-        ).pack(anchor="w", pady=(4, 0))
-
-        ttk.Label(contenido, text="Reportes de la Fase 1", style="Section.TLabel").pack(
-            anchor="w", padx=28, pady=(8, 2)
+            nota="Primera corrida: como aún no existe un CommiFlow de 2025 ni de "
+            "2024, los años anteriores se cargan aquí.",
         )
 
-        self.entrada_f2_vida = crear_selector_archivo(
+        crear_seccion(
             contenido,
-            "Reporte VIDA Final",
-            lambda: self._seleccionar_archivo_fase2("vida"),
-            ayuda="Excel o parquet generado por la Fase 1.",
+            "Referencias",
+            "Catálogos que se usan para clasificar comisiones y bonos.",
+            primera=True,
         )
-        self.frame_f2_vida_hojas = self._marco_hojas(
-            contenido, "Hojas de Reporte VIDA Final"
-        )
-
-        self.entrada_f2_gmm = crear_selector_archivo(
-            contenido,
-            "Reporte GMM Final",
-            lambda: self._seleccionar_archivo_fase2("gmm"),
-            ayuda="Excel o parquet generado por la Fase 1.",
-        )
-        self.frame_f2_gmm_hojas = self._marco_hojas(
-            contenido, "Hojas de Reporte GMM Final"
-        )
-
-        ttk.Label(
-            contenido, text="Referencias de la Fase 2", style="Section.TLabel"
-        ).pack(anchor="w", padx=28, pady=(18, 2))
 
         self.entrada_f2_dist = crear_selector_archivo(
             contenido,
             "Distribución Comercial",
             lambda: self._seleccionar_archivo_fase2("dist"),
             ayuda="Excel. Se busca Promotor en la columna A y se toma la columna B.",
+            etiquetas=("requerido",),
         )
         self.frame_f2_dist_hojas = self._marco_hojas(
             contenido, "Hojas de Distribución Comercial"
@@ -589,10 +579,30 @@ class VentanaPrincipal:
             contenido,
             "Archivo de Catálogos",
             lambda: self._seleccionar_archivo_fase2("catalogos"),
-            ayuda="Debe incluir la hoja PFPM (AGENTE_ORIGINAL y AGENTE_REPORTERIA).",
+            ayuda="Se llena solo con el Archivo único de Catálogos de la pestaña 1. "
+            "Solo cámbielo si quiere usar otro archivo. Debe incluir la hoja PFPM.",
+            etiquetas=("requerido", "auto"),
         )
         self.frame_f2_catalogos_hojas = self._marco_hojas(
             contenido, "Hojas de Catálogos"
+        )
+
+        self.entrada_f2_clasif = crear_selector_archivo(
+            contenido,
+            "Catálogo de clasificaciones",
+            lambda: self._seleccionar_archivo_fase2("clasif"),
+            ayuda="Excel con hoja VIDA y hoja GMM. Encabezados: Ramo, Ini_Ren, FIGURA, "
+            "CATEGORIA, COMPENSACIÓN, CC, NOMBRE.",
+            etiquetas=("requerido",),
+        )
+        self.frame_f2_clasif_hojas = self._marco_hojas(
+            contenido, "Hojas de Catálogo de clasificaciones"
+        )
+
+        crear_seccion(
+            contenido,
+            "Año actual",
+            "Bonos pagados en el año en curso hasta el mes de corte.",
         )
 
         self.entrada_f2_bonos = crear_selector_archivo(
@@ -600,176 +610,183 @@ class VentanaPrincipal:
             "Bonos",
             lambda: self._seleccionar_archivo_fase2("bonos"),
             ayuda="Excel del año actual. Encabezados en la fila 2; los datos empiezan en la fila 3.",
+            etiquetas=("requerido",),
         )
         self.frame_f2_bonos_hojas = self._marco_hojas(contenido, "Hojas de Bonos")
 
+        crear_seccion(
+            contenido,
+            "Año anterior · año completo",
+            "Necesarios para llenar las columnas FY del año anterior. Si faltan, "
+            "esas columnas quedan cortadas.",
+        )
+
         self.entrada_f2_bonos_anterior = crear_selector_archivo(
             contenido,
-            "Bonos del año anterior",
+            "Bonos FY del año anterior",
             lambda: self._seleccionar_archivo_fase2("bonos_anterior"),
-            ayuda="Mismo layout que Bonos. Se procesa con Dist, PFPM y el catálogo actuales.",
+            ayuda="Enero a diciembre. Mismo formato que Bonos. Se procesa con la "
+            "Distribución, PFPM y el catálogo actuales.",
+            etiquetas=("fy",),
         )
         self.frame_f2_bonos_anterior_hojas = self._marco_hojas(
-            contenido, "Hojas de Bonos del año anterior"
+            contenido, "Hojas de Bonos FY del año anterior"
         )
 
         self.entrada_f2_comision_anterior = crear_selector_archivo(
             contenido,
             "Base de comisiones FY del año anterior",
             lambda: self._seleccionar_archivo_fase2("comision_anterior"),
-            ayuda="Debe ser el año completo (enero-diciembre), no el acumulado "
-            "al mes de corte. Misma estructura que Comision Base de CommiFlow "
+            ayuda="Enero a diciembre. Misma estructura que Comision Base de CommiFlow "
             "(Conducto, Mes, TIPO COMISIÓN, Tipo, PROMOTOR, CLAVE, COMISION, PROMOTORIA).",
+            etiquetas=("fy",),
         )
         self.frame_f2_comision_anterior_hojas = self._marco_hojas(
             contenido, "Hojas de Comision Base FY del año anterior"
         )
 
-        self.entrada_f2_clasif = crear_selector_archivo(
+        crear_seccion(
             contenido,
-            "Catálogo de clasificaciones",
-            lambda: self._seleccionar_archivo_fase2("clasif"),
-            ayuda="Excel con hoja VIDA y hoja GMM. Encabezados: Ramo, Ini_Ren, FIGURA, CATEGORIA, COMPENSACIÓN, CC, NOMBRE.",
-        )
-        self.frame_f2_clasif_hojas = self._marco_hojas(
-            contenido, "Hojas de Catálogo de clasificaciones"
+            "Hace dos años · año completo",
+            "Necesarios para llenar las columnas FY de hace dos años.",
         )
 
-        ttk.Label(
+        self.entrada_f2_bonos_dos_anios = crear_selector_archivo(
             contenido,
-            text="Tablas de combinaciones",
-            style="Section.TLabel",
-        ).pack(anchor="w", padx=28, pady=(18, 2))
-        ttk.Label(
+            "Bonos FY de hace dos años",
+            lambda: self._seleccionar_archivo_fase2("bonos_dos_anios"),
+            ayuda="Enero a diciembre. Mismo formato que Bonos.",
+            etiquetas=("fy",),
+        )
+        self.frame_f2_bonos_dos_anios_hojas = self._marco_hojas(
+            contenido, "Hojas de Bonos FY de hace dos años"
+        )
+
+        self.entrada_f2_comision_dos_anios = crear_selector_archivo(
             contenido,
-            text="Marque figura, ramo e Ini_Ren. Se genera una tabla por cada combinación con venta distinta de 0.",
-            style="Hint.TLabel",
-        ).pack(anchor="w", padx=28, pady=(0, 8))
+            "Base de comisiones FY de hace dos años",
+            lambda: self._seleccionar_archivo_fase2("comision_dos_anios"),
+            ayuda="Enero a diciembre. Misma estructura que Comision Base de CommiFlow.",
+            etiquetas=("fy",),
+        )
+        self.frame_f2_comision_dos_anios_hojas = self._marco_hojas(
+            contenido, "Hojas de Comision Base FY de hace dos años"
+        )
+
+        crear_seccion(
+            contenido,
+            "Tablas de combinaciones",
+            "Marque figura, ramo e Ini_Ren. Se genera una tabla por cada "
+            "combinación con venta distinta de 0.",
+        )
         self._crear_checks_combinaciones(contenido)
 
-        boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
-        boton_frame.pack(pady=(24, 36))
-        self.boton_fase2 = tk.Button(
-            boton_frame,
-            text="Generar Comisión",
-            command=self.ejecutar_fase2,
-            bg=COLORES["primario"],
-            fg="#FFFFFF",
-            activebackground=COLORES["primario_hover"],
-            activeforeground="#FFFFFF",
-            font=("Segoe UI Semibold", 12),
-            relief="flat",
-            bd=0,
-            cursor="hand2",
-            padx=32,
-            pady=11,
+        crear_seccion(
+            contenido,
+            "Reportes VIDA / GMM Final",
+            "Solo se usan si ejecuta esta pestaña por separado. En la pestaña 5 "
+            "se generan solos. Si ejecutó la pestaña 1 por separado, se llenan "
+            "automáticamente.",
         )
-        self.boton_fase2.pack()
-        self.boton_fase2.bind(
-            "<Enter>",
-            lambda _e: self.boton_fase2.config(bg=COLORES["primario_hover"])
-            if str(self.boton_fase2["state"]) == "normal"
-            else None,
+
+        self.entrada_f2_vida = crear_selector_archivo(
+            contenido,
+            "Reporte VIDA Final",
+            lambda: self._seleccionar_archivo_fase2("vida"),
+            ayuda="Excel o parquet generado en la pestaña 1.",
+            etiquetas=("opcional", "auto"),
         )
-        self.boton_fase2.bind(
-            "<Leave>",
-            lambda _e: self.boton_fase2.config(bg=COLORES["primario"])
-            if str(self.boton_fase2["state"]) == "normal"
-            else None,
+        self.frame_f2_vida_hojas = self._marco_hojas(
+            contenido, "Hojas de Reporte VIDA Final"
+        )
+
+        self.entrada_f2_gmm = crear_selector_archivo(
+            contenido,
+            "Reporte GMM Final",
+            lambda: self._seleccionar_archivo_fase2("gmm"),
+            ayuda="Excel o parquet generado en la pestaña 1.",
+            etiquetas=("opcional", "auto"),
+        )
+        self.frame_f2_gmm_hojas = self._marco_hojas(
+            contenido, "Hojas de Reporte GMM Final"
+        )
+
+        self.boton_fase2 = crear_boton_primario(
+            contenido,
+            "Ejecutar solo este paso",
+            self.ejecutar_fase2,
+            ayuda="Opcional. Genera Comision.xlsx por separado; requiere los reportes "
+            "VIDA / GMM Final.",
         )
 
     def _crear_tab_bases_pp(self):
         contenido = crear_area_desplazable(self.tab_bases_pp)
 
-        exterior = tk.Frame(contenido, bg=COLORES["fondo"])
-        exterior.pack(fill="x", padx=28, pady=(18, 10))
-        borde = tk.Frame(exterior, bg=COLORES["borde"])
-        borde.pack(fill="x")
-        tarjeta = tk.Frame(borde, bg=COLORES["tarjeta"])
-        tarjeta.pack(fill="x", padx=1, pady=1)
-        acento = tk.Frame(tarjeta, bg=COLORES["primario"], width=4)
-        acento.pack(side="left", fill="y")
-        cuerpo = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
-        cuerpo.pack(fill="x", padx=16, pady=14)
-        ttk.Label(
-            cuerpo, text="Bases PP · Primas ponderadas / pagadas", style="CardTitle.TLabel"
-        ).pack(anchor="w")
-        ttk.Label(
-            cuerpo,
-            text=(
-                "Seleccione las carpetas Bases de Primas del mes del año actual y "
-                "del año anterior. Solo se leen Excel (.xlsx, .xls o .xlsb) del "
-                "primer nivel. Confirme los archivos de cada año (los 7 tipos "
-                "conocidos y, si aplica, bases adicionales) y la hoja de datos. "
-                "Si un producto ya no viene en el mes de corte (ej. Metplus), "
-                "use «Usar Excel de otro mes» con el último acumulado; las "
-                "columnas se arman hasta el mes de la carpeta. "
-                "El resultado se guarda como Primas.xlsx, hoja Bases PP. "
-                "Etapa independiente para pruebas."
+        crear_encabezado_paso(
+            contenido,
+            3,
+            "Bases PP · Primas pagadas",
+            "Lee las carpetas «Bases de Primas» y arma las tablas de prima pagada "
+            "por tipo de producto para el año actual y los dos años anteriores.",
+            resultado="Primas.xlsx, hoja Bases PP.",
+            pasos=(
+                "Elija la carpeta de cada periodo. CommiFlow detecta los Excel de "
+                "cada tipo automáticamente.",
+                "Revise que cada tipo tenga marcado «Usar este archivo» y la hoja "
+                "correcta (con Promotor, Agente, Prima Pagada y Mes).",
+                "Si un producto ya no viene en la carpeta (ej. Metplus), use "
+                "«Usar Excel de otro mes». Con «Agregar más» suma bases extra.",
             ),
-            style="Muted.TLabel",
-            wraplength=900,
-        ).pack(anchor="w", pady=(4, 0))
+            nota="Para los años anteriores use la carpeta de DICIEMBRE (año completo), "
+            "no la del mes de corte. Solo se leen Excel (.xlsx, .xls, .xlsb) del "
+            "primer nivel de la carpeta.",
+        )
 
         self.entradas_pp["actual"] = self._crear_seccion_pp(
             contenido,
             "actual",
             "Año actual",
-            "Carpeta Bases de Primas del mes (año actual)",
+            "Carpeta Bases de Primas del mes de corte",
+            etiquetas=("requerido",),
         )
         self.entradas_pp["anterior"] = self._crear_seccion_pp(
             contenido,
             "anterior",
-            "Año anterior",
-            "Carpeta Bases de Primas del mes (año anterior)",
+            "Año anterior · año completo",
+            "Carpeta Bases de Primas de diciembre del año anterior",
+            etiquetas=("fy",),
+        )
+        self.entradas_pp["dos"] = self._crear_seccion_pp(
+            contenido,
+            "dos",
+            "Hace dos años · año completo",
+            "Carpeta Bases de Primas de diciembre de hace dos años",
+            etiquetas=("fy", "opcional"),
         )
 
-        boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
-        boton_frame.pack(pady=(24, 36))
-        self.boton_bases_pp = tk.Button(
-            boton_frame,
-            text="Generar Primas",
-            command=self.ejecutar_bases_pp,
-            bg=COLORES["primario"],
-            fg="#FFFFFF",
-            activebackground=COLORES["primario_hover"],
-            activeforeground="#FFFFFF",
-            font=("Segoe UI Semibold", 12),
-            relief="flat",
-            bd=0,
-            cursor="hand2",
-            padx=32,
-            pady=11,
-        )
-        self.boton_bases_pp.pack()
-        self.boton_bases_pp.bind(
-            "<Enter>",
-            lambda _e: self.boton_bases_pp.config(bg=COLORES["primario_hover"])
-            if str(self.boton_bases_pp["state"]) == "normal"
-            else None,
-        )
-        self.boton_bases_pp.bind(
-            "<Leave>",
-            lambda _e: self.boton_bases_pp.config(bg=COLORES["primario"])
-            if str(self.boton_bases_pp["state"]) == "normal"
-            else None,
+        self.boton_bases_pp = crear_boton_primario(
+            contenido,
+            "Ejecutar solo este paso",
+            self.ejecutar_bases_pp,
+            ayuda="Opcional. Genera Primas.xlsx por separado.",
         )
 
-    def _crear_seccion_pp(self, parent, periodo, titulo_seccion, titulo_selector):
-        ttk.Label(parent, text=titulo_seccion, style="Section.TLabel").pack(
-            anchor="w", padx=28, pady=(18, 2)
+    def _crear_seccion_pp(
+        self, parent, periodo, titulo_seccion, titulo_selector, etiquetas=None
+    ):
+        crear_seccion(
+            parent,
+            titulo_seccion,
+            "Después de elegir la carpeta, revise abajo el archivo y la hoja de "
+            "cada tipo de producto.",
         )
         entrada = crear_selector_archivo(
             parent,
             titulo_selector,
             lambda: self._seleccionar_carpeta_pp(periodo),
-            ayuda="Se ignoran subcarpetas, PDF y cualquier archivo que no sea .xlsx, .xls o .xlsb.",
+            ayuda="Se ignoran subcarpetas, PDF y archivos que no sean .xlsx, .xls o .xlsb.",
+            etiquetas=etiquetas,
         )
-        ttk.Label(
-            parent,
-            text="Marque el archivo de cada tipo y la hoja donde están Promotor, Agente, Prima Pagada y Mes. Si falta un producto, use Excel de otro mes. Use Agregar más si hay bases extra.",
-            style="Hint.TLabel",
-        ).pack(anchor="w", padx=28, pady=(0, 8))
         for tipo_id in ORDEN_TIPOS_PP:
             self._crear_fila_tipo_pp(parent, periodo, tipo_id)
         extras = tk.Frame(parent, bg=COLORES["fondo"])
@@ -1022,10 +1039,16 @@ class VentanaPrincipal:
     def _entradas_bases_pp(self):
         entradas = []
         faltantes = []
-        periodos = (("actual", "Año actual"), ("anterior", "Año anterior"))
-        for periodo, etiqueta in periodos:
+        periodos = (
+            ("actual", "Año actual", True),
+            ("anterior", "Año anterior FY", True),
+            ("dos", "Hace dos años FY", False),
+        )
+        for periodo, etiqueta, obligatorio in periodos:
             if not self.carpetas_pp[periodo]:
-                raise ValueError(f"Debe seleccionar la carpeta de {etiqueta}.")
+                if obligatorio:
+                    raise ValueError(f"Debe seleccionar la carpeta de {etiqueta}.")
+                continue
             for tipo_id in list(ORDEN_TIPOS_PP) + self.pp_extras_ids[periodo]:
                 widgets = self.pp_tipos[periodo][tipo_id]
                 titulo = widgets["titulo_var"].get().strip() or TITULOS_PP.get(
@@ -1063,90 +1086,69 @@ class VentanaPrincipal:
     def _crear_tab_base_anp(self):
         contenido = crear_area_desplazable(self.tab_base_anp)
 
-        exterior = tk.Frame(contenido, bg=COLORES["fondo"])
-        exterior.pack(fill="x", padx=28, pady=(18, 10))
-        borde = tk.Frame(exterior, bg=COLORES["borde"])
-        borde.pack(fill="x")
-        tarjeta = tk.Frame(borde, bg=COLORES["tarjeta"])
-        tarjeta.pack(fill="x", padx=1, pady=1)
-        acento = tk.Frame(tarjeta, bg=COLORES["primario"], width=4)
-        acento.pack(side="left", fill="y")
-        cuerpo = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
-        cuerpo.pack(fill="x", padx=16, pady=14)
-        ttk.Label(
-            cuerpo, text="Base ANP · Detalle pagado", style="CardTitle.TLabel"
-        ).pack(anchor="w")
-        ttk.Label(
-            cuerpo,
-            text=(
-                "Etapa final independiente. Lee Excel de Detalle pagado del año "
-                "actual y del anterior, arma la tabla dinámica Promotor × Mes × "
-                "Ramo (suma de PNA: GMM y Vida) y al generar le pregunta dónde "
-                "guardar Base ANP.xlsx. El mes sale de F. Pago; si no se detecta "
-                "la columna, se pide a mano."
+        crear_encabezado_paso(
+            contenido,
+            4,
+            "Base ANP · Detalle pagado",
+            "Lee los Excel de Detalle pagado y arma la tabla Promotor × Mes × Ramo "
+            "con la suma de PNA. El mes se toma de la columna F. Pago.",
+            resultado="Base ANP.xlsx (resumen y detalle).",
+            pasos=(
+                "Elija los Excel o la carpeta de cada periodo.",
+                "Solo marque hojas si el Excel no tiene una hoja llamada "
+                "«Detalle pagado».",
+                "Continúe con la pestaña 5 para generar el CommiFlow.",
             ),
-            style="Muted.TLabel",
-            wraplength=900,
-        ).pack(anchor="w", pady=(4, 0))
-
-        ttk.Label(contenido, text="Archivos de entrada", style="Section.TLabel").pack(
-            anchor="w", padx=28, pady=(8, 2)
         )
+
+        ttk.Checkbutton(
+            contenido,
+            text="Al elegir una carpeta, incluir también sus subcarpetas",
+            variable=self.incluir_subcarpetas_anp,
+        ).pack(anchor="w", padx=32, pady=(4, 0))
+
+        crear_seccion(contenido, "Año actual", primera=True)
         self.entrada_anp = crear_selector_multiples(
             contenido,
-            "Excel de Detalle pagado (año actual)",
+            "Detalle pagado del año actual",
             lambda: self._seleccionar_archivos_anp("actual"),
             lambda: self._seleccionar_carpeta_anp("actual"),
             ayuda="Uno o varios Excel (.xlsx, .xls, .xlsm o .xlsb), o una carpeta.",
+            etiquetas=("requerido",),
         )
         self.frame_anp_hojas = self._marco_hojas(
             contenido, "Hojas del año actual (si no existe 'Detalle pagado')"
         )
+
+        crear_seccion(contenido, "Años anteriores · año completo")
         self.entrada_anp_anterior = crear_selector_multiples(
             contenido,
-            "Excel de Detalle pagado (año anterior)",
+            "Detalle pagado FY del año anterior",
             lambda: self._seleccionar_archivos_anp("anterior"),
             lambda: self._seleccionar_carpeta_anp("anterior"),
-            ayuda="Mismos Excel de Detalle pagado, del año pasado.",
+            ayuda="Enero a diciembre, no solo hasta el mes de corte.",
+            etiquetas=("fy",),
         )
         self.frame_anp_hojas_anterior = self._marco_hojas(
-            contenido, "Hojas del año anterior (si no existe 'Detalle pagado')"
+            contenido, "Hojas FY del año anterior (si no existe 'Detalle pagado')"
         )
-        ttk.Checkbutton(
+        self.entrada_anp_dos = crear_selector_multiples(
             contenido,
-            text="Incluir subcarpetas",
-            variable=self.incluir_subcarpetas_anp,
-        ).pack(anchor="w", padx=32, pady=(0, 8))
+            "Detalle pagado FY de hace dos años",
+            lambda: self._seleccionar_archivos_anp("dos"),
+            lambda: self._seleccionar_carpeta_anp("dos"),
+            ayuda="Enero a diciembre.",
+            etiquetas=("fy",),
+        )
+        self.frame_anp_hojas_dos = self._marco_hojas(
+            contenido, "Hojas FY de hace dos años (si no existe 'Detalle pagado')"
+        )
 
-        boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
-        boton_frame.pack(pady=(24, 36))
-        self.boton_anp = tk.Button(
-            boton_frame,
-            text="Generar Base ANP",
-            command=self.ejecutar_base_anp,
-            bg=COLORES["primario"],
-            fg="#FFFFFF",
-            activebackground=COLORES["primario_hover"],
-            activeforeground="#FFFFFF",
-            font=("Segoe UI Semibold", 12),
-            relief="flat",
-            bd=0,
-            cursor="hand2",
-            padx=32,
-            pady=11,
-        )
-        self.boton_anp.pack()
-        self.boton_anp.bind(
-            "<Enter>",
-            lambda _e: self.boton_anp.config(bg=COLORES["primario_hover"])
-            if str(self.boton_anp["state"]) == "normal"
-            else None,
-        )
-        self.boton_anp.bind(
-            "<Leave>",
-            lambda _e: self.boton_anp.config(bg=COLORES["primario"])
-            if str(self.boton_anp["state"]) == "normal"
-            else None,
+        self.boton_anp = crear_boton_primario(
+            contenido,
+            "Ejecutar solo este paso",
+            self.ejecutar_base_anp,
+            ayuda="Opcional. Genera Base ANP.xlsx por separado.",
         )
 
     def _seleccionar_archivos_anp(self, periodo="actual"):
@@ -1181,6 +1183,11 @@ class VentanaPrincipal:
             entrada = self.entrada_anp_anterior
             frame = self.frame_anp_hojas_anterior
             attr_checks = "checks_anp_anterior"
+        elif periodo == "dos":
+            self.archivos_anp_dos = archivos
+            entrada = self.entrada_anp_dos
+            frame = self.frame_anp_hojas_dos
+            attr_checks = "checks_anp_dos"
         else:
             self.archivos_anp = archivos
             entrada = self.entrada_anp
@@ -1206,13 +1213,18 @@ class VentanaPrincipal:
             checks[0][1].set(True)
 
     def _archivos_anp_todos(self):
-        return list(self.archivos_anp) + list(self.archivos_anp_anterior)
+        return (
+            list(self.archivos_anp)
+            + list(self.archivos_anp_anterior)
+            + list(self.archivos_anp_dos)
+        )
 
     def _hojas_anp_todas(self):
         hojas = [hoja for hoja, variable in self.checks_anp if variable.get()]
         hojas += [
             hoja for hoja, variable in self.checks_anp_anterior if variable.get()
         ]
+        hojas += [hoja for hoja, variable in self.checks_anp_dos if variable.get()]
         vistas = []
         for hoja in hojas:
             if hoja not in vistas:
@@ -1336,34 +1348,38 @@ class VentanaPrincipal:
     def _crear_tab_proceso_total(self):
         contenido = crear_area_desplazable(self.tab_proceso_total)
 
-        exterior = tk.Frame(contenido, bg=COLORES["fondo"])
-        exterior.pack(fill="x", padx=28, pady=(18, 10))
-        borde = tk.Frame(exterior, bg=COLORES["borde"])
-        borde.pack(fill="x")
-        tarjeta = tk.Frame(borde, bg=COLORES["tarjeta"])
-        tarjeta.pack(fill="x", padx=1, pady=1)
-        acento = tk.Frame(tarjeta, bg=COLORES["primario"], width=4)
-        acento.pack(side="left", fill="y")
-        cuerpo = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
-        cuerpo.pack(fill="x", padx=16, pady=14)
-        ttk.Label(
-            cuerpo, text="Proceso Completo", style="CardTitle.TLabel"
-        ).pack(anchor="w")
-        ttk.Label(
-            cuerpo,
-            text=(
-                "Ejecuta de inicio a fin las pestañas Proceso, Comisiones y Bonos, "
-                "Bases PP y Base ANP. Use los archivos ya seleccionados en cada pestaña. "
-                "Los reportes VIDA Final y GMM Final se generan solo como insumo interno "
-                "y no quedan como archivos descargables. El resultado se consolida en "
-                f"{ARCHIVO_CONSOLIDADO.name}, con cada salida en una hoja distinta."
+        crear_encabezado_paso(
+            contenido,
+            5,
+            "Generar CommiFlow",
+            "Ejecuta de una sola vez las pestañas 1 a 4 con los archivos que ya "
+            "cargó en cada una. No tiene que volver a seleccionar nada aquí.",
+            resultado=f"{ARCHIVO_CONSOLIDADO.name} con Comisiones y Bonos, Bases PP y "
+            "Base ANP en hojas separadas.",
+            pasos=(
+                "Revise la lista de abajo: todo lo marcado como «Falta» se debe "
+                "cargar en su pestaña.",
+                "Pulse «Generar CommiFlow» y elija dónde guardar el archivo.",
+                "Al terminar, el archivo se carga solo en la pestaña 6.",
             ),
-            style="Muted.TLabel",
-            wraplength=900,
-        ).pack(anchor="w", pady=(2, 0))
+            nota="Los reportes VIDA Final y GMM Final se generan como insumo interno "
+            "y se eliminan al terminar.",
+        )
+
+        crear_seccion(
+            contenido,
+            "Archivos cargados",
+            "Se actualiza cada vez que abre esta pestaña.",
+            primera=True,
+        )
+        self.frame_resumen_total = tk.Frame(contenido, bg=COLORES["fondo"])
+        self.frame_resumen_total.pack(fill="x", padx=28, pady=(6, 0))
+        self.notebook.bind(
+            "<<NotebookTabChanged>>", self._al_cambiar_pestana, add="+"
+        )
 
         etapas = tk.Frame(contenido, bg=COLORES["fondo"])
-        etapas.pack(fill="x", padx=28, pady=(8, 4))
+        etapas.pack(fill="x", padx=28, pady=(22, 4))
         ttk.Label(etapas, text="Etapas que se ejecutarán", style="Section.TLabel").pack(
             anchor="w"
         )
@@ -1376,17 +1392,17 @@ class VentanaPrincipal:
             (
                 "2",
                 "Comisiones y Bonos",
-                "Usa el reporte interno, Bonos de ambos años y Comision Base FY del año anterior.",
+                "Usa el reporte interno, Bonos y Comision Base del año actual y FY de los dos años anteriores.",
             ),
             (
                 "3",
                 "Bases PP",
-                "Genera las tablas de primas del año actual y anterior.",
+                "Genera las tablas de primas del año actual y FY de los dos años anteriores.",
             ),
             (
                 "4",
                 "Base ANP",
-                "Genera el resumen y el detalle de Detalle pagado del año actual y anterior.",
+                "Genera el resumen y el detalle de Detalle pagado del año actual y de los dos años anteriores.",
             ),
             (
                 "5",
@@ -1405,66 +1421,170 @@ class VentanaPrincipal:
                 anchor="w"
             )
 
-        boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
-        boton_frame.pack(pady=(24, 36))
-        self.boton_proceso_total = tk.Button(
-            boton_frame,
-            text="Ejecutar proceso completo",
-            command=self.ejecutar_proceso_total,
-            bg=COLORES["primario"],
-            fg="#FFFFFF",
-            activebackground=COLORES["primario_hover"],
-            activeforeground="#FFFFFF",
-            font=("Segoe UI Semibold", 12),
-            relief="flat",
-            bd=0,
-            cursor="hand2",
-            padx=32,
-            pady=11,
+        self.boton_proceso_total = crear_boton_primario(
+            contenido,
+            "Generar CommiFlow",
+            self.ejecutar_proceso_total,
         )
-        self.boton_proceso_total.pack()
-        self.boton_proceso_total.bind(
-            "<Enter>",
-            lambda _e: self.boton_proceso_total.config(bg=COLORES["primario_hover"])
-            if str(self.boton_proceso_total["state"]) == "normal"
-            else None,
+        self._refrescar_resumen_total()
+
+    def _al_cambiar_pestana(self, _evento=None):
+        try:
+            actual = self.notebook.select()
+        except tk.TclError:
+            return
+        if actual == str(self.tab_proceso_total):
+            self._refrescar_resumen_total()
+
+    def _grupos_resumen_total(self):
+        def hay(valor):
+            return bool(valor)
+
+        return (
+            (
+                "1 · Proceso",
+                self.tab_completo,
+                (
+                    ("Base VIDA", hay(self.archivos.get("vida")), True),
+                    ("Base GMM", hay(self.archivos.get("gmm")), True),
+                    ("Archivo SAA", hay(self.archivos.get("saa")), True),
+                    ("Acumulado de Comisiones", hay(self.archivos.get("manuales")), True),
+                    ("Archivo VLSP", hay(self.archivos.get("vlsp")), True),
+                    ("Catálogo Estatus Pólizas", hay(self.archivos.get("tipo")), True),
+                    ("Archivo único de Catálogos", hay(self.archivos.get("catalogos")), True),
+                ),
+            ),
+            (
+                "2 · Comisiones y Bonos",
+                self.tab_fase2,
+                (
+                    ("Distribución Comercial", hay(self.archivos_fase2.get("dist")), True),
+                    ("Archivo de Catálogos", hay(self.archivos_fase2.get("catalogos")), True),
+                    ("Catálogo de clasificaciones", hay(self.archivos_fase2.get("clasif")), True),
+                    ("Bonos", hay(self.archivos_fase2.get("bonos")), True),
+                    ("Bonos FY año anterior", hay(self.archivos_fase2.get("bonos_anterior")), False),
+                    ("Comisiones FY año anterior", hay(self.archivos_fase2.get("comision_anterior")), False),
+                    ("Bonos FY hace dos años", hay(self.archivos_fase2.get("bonos_dos_anios")), False),
+                    ("Comisiones FY hace dos años", hay(self.archivos_fase2.get("comision_dos_anios")), False),
+                ),
+            ),
+            (
+                "3 · Bases PP",
+                self.tab_bases_pp,
+                (
+                    ("Carpeta año actual", hay(self.carpetas_pp.get("actual")), True),
+                    ("Carpeta FY año anterior", hay(self.carpetas_pp.get("anterior")), False),
+                    ("Carpeta FY hace dos años", hay(self.carpetas_pp.get("dos")), False),
+                ),
+            ),
+            (
+                "4 · Base ANP",
+                self.tab_base_anp,
+                (
+                    ("Detalle pagado año actual", hay(self.archivos_anp), True),
+                    ("Detalle pagado FY año anterior", hay(self.archivos_anp_anterior), False),
+                    ("Detalle pagado FY hace dos años", hay(self.archivos_anp_dos), False),
+                ),
+            ),
         )
-        self.boton_proceso_total.bind(
-            "<Leave>",
-            lambda _e: self.boton_proceso_total.config(bg=COLORES["primario"])
-            if str(self.boton_proceso_total["state"]) == "normal"
-            else None,
-        )
+
+    def _refrescar_resumen_total(self):
+        marco = getattr(self, "frame_resumen_total", None)
+        if marco is None:
+            return
+        for widget in marco.winfo_children():
+            widget.destroy()
+
+        grupos = self._grupos_resumen_total()
+        for columna, (titulo, pestana, items) in enumerate(grupos):
+            marco.grid_columnconfigure(columna % 2, weight=1, uniform="resumen")
+            borde = tk.Frame(marco, bg=COLORES["borde"])
+            borde.grid(
+                row=columna // 2,
+                column=columna % 2,
+                sticky="nsew",
+                padx=(0 if columna % 2 == 0 else 6, 6 if columna % 2 == 0 else 0),
+                pady=(0, 10),
+            )
+            tarjeta = tk.Frame(borde, bg=COLORES["tarjeta"])
+            tarjeta.pack(fill="both", expand=True, padx=1, pady=1)
+
+            faltan = sum(1 for _n, ok, req in items if req and not ok)
+            cabecera = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
+            cabecera.pack(fill="x", padx=14, pady=(10, 4))
+            tk.Label(
+                cabecera,
+                text=titulo,
+                fg=COLORES["texto"],
+                bg=COLORES["tarjeta"],
+                font=("Segoe UI Semibold", 10),
+            ).pack(side="left")
+            ttk.Button(
+                cabecera,
+                text="Ir a la pestaña",
+                command=lambda p=pestana: self.notebook.select(p),
+            ).pack(side="right")
+            if faltan:
+                tk.Label(
+                    cabecera,
+                    text=f"Faltan {faltan}",
+                    fg=COLORES["error"],
+                    bg=COLORES["tarjeta"],
+                    font=("Segoe UI Semibold", 8),
+                ).pack(side="right", padx=8)
+
+            for nombre, ok, requerido in items:
+                fila = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
+                fila.pack(fill="x", padx=14, pady=1)
+                if ok:
+                    icono, color, estado = "✔", COLORES["exito"], "Cargado"
+                elif requerido:
+                    icono, color, estado = "✖", COLORES["error"], "Falta"
+                else:
+                    icono, color, estado = "●", COLORES["aviso"], "Recomendado"
+                tk.Label(
+                    fila,
+                    text=icono,
+                    fg=color,
+                    bg=COLORES["tarjeta"],
+                    font=("Segoe UI", 9),
+                    width=2,
+                ).pack(side="left")
+                tk.Label(
+                    fila,
+                    text=nombre,
+                    fg=COLORES["texto"],
+                    bg=COLORES["tarjeta"],
+                    font=("Segoe UI", 9),
+                ).pack(side="left")
+                tk.Label(
+                    fila,
+                    text=estado,
+                    fg=color,
+                    bg=COLORES["tarjeta"],
+                    font=("Segoe UI", 8),
+                ).pack(side="right")
+            tk.Frame(tarjeta, bg=COLORES["tarjeta"], height=8).pack(fill="x")
 
     def _crear_tab_ingresos(self):
         contenido = crear_area_desplazable(self.tab_ingresos)
 
-        exterior = tk.Frame(contenido, bg=COLORES["fondo"])
-        exterior.pack(fill="x", padx=28, pady=(18, 10))
-        borde = tk.Frame(exterior, bg=COLORES["borde"])
-        borde.pack(fill="x")
-        tarjeta = tk.Frame(borde, bg=COLORES["tarjeta"])
-        tarjeta.pack(fill="x", padx=1, pady=1)
-        acento = tk.Frame(tarjeta, bg=COLORES["primario"], width=4)
-        acento.pack(side="left", fill="y")
-        cuerpo = tk.Frame(tarjeta, bg=COLORES["tarjeta"])
-        cuerpo.pack(fill="x", padx=16, pady=14)
-        ttk.Label(
-            cuerpo, text="Ingresos vs Ventas", style="CardTitle.TLabel"
-        ).pack(anchor="w")
-        ttk.Label(
-            cuerpo,
-            text=(
-                "Arma el Excel final con filtro por promotor o TOTAL. "
-                "El Excel del año actual (CommiFlow) ya puede traer el año anterior "
-                "en ANP, Bonos y Comision Base Anterior; si es así, deje vacíos "
-                "los otros recuadros. A partir del próximo año use "
-                "CommiFlow_mes_año.xlsx del corte equivalente como año anterior. "
-                "Las cifras de las tablas están en MDP."
+        crear_encabezado_paso(
+            contenido,
+            6,
+            "Ingresos vs Ventas",
+            "Arma el reporte final de Ingresos vs Ventas a partir del CommiFlow, "
+            "con filtro por promotor o TOTAL. Las cifras de las tablas están en MDP.",
+            resultado="Excel de Ingresos vs Ventas (hojas Filtro, Parametros y Datos).",
+            pasos=(
+                "Confirme el año y el mes de corte.",
+                "El CommiFlow del año actual se carga solo al terminar la pestaña 5. "
+                "Si lo generó en otra sesión, selecciónelo.",
+                "Pulse «Generar Ingresos vs Ventas».",
             ),
-            style="Muted.TLabel",
-            wraplength=900,
-        ).pack(anchor="w", pady=(4, 0))
+            nota="Si en las pestañas 2 a 4 cargó los archivos de años anteriores, el "
+            "CommiFlow ya los trae y NO necesita cargar los Excel opcionales.",
+        )
 
         params = tk.Frame(contenido, bg=COLORES["fondo"])
         params.pack(fill="x", padx=28, pady=(8, 8))
@@ -1491,60 +1611,48 @@ class VentanaPrincipal:
         self.combo_mes_ingresos.set(MESES_INV[self.mes_corte_ingresos.get()])
         self.combo_mes_ingresos.pack(side="left", padx=(8, 0))
 
+        crear_seccion(contenido, "CommiFlow del año actual")
         self.entrada_ing_actual = crear_selector_archivo(
             contenido,
-            "Excel del año actual",
+            "CommiFlow del año actual",
             lambda: self._seleccionar_archivo_ingresos("actual"),
-            ayuda="CommiFlow.xlsx o el Excel que ya tenga Comisión Base, Pagos de Bonos, Bases PP y Detalle ANP.",
+            ayuda="CommiFlow.xlsx o un Excel que ya tenga Comisión Base, Pagos de "
+            "Bonos, Bases PP y Detalle ANP.",
+            etiquetas=("requerido", "auto"),
+        )
+
+        crear_seccion(
+            contenido,
+            "Años anteriores (solo si el CommiFlow no los trae)",
+            "Déjelos vacíos si cargó los años anteriores en las pestañas 2 a 4.",
         )
         self.entrada_ing_anterior = crear_selector_archivo(
             contenido,
-            "Excel del año anterior (opcional)",
+            "Excel del año anterior",
             lambda: self._seleccionar_archivo_ingresos("anterior"),
-            ayuda="Bases finales del año que CommiFlow no genera. Puede ser otro CommiFlow o un Excel con hoja Datos.",
+            ayuda="Otro CommiFlow o un Excel con hoja Datos del año anterior completo.",
+            etiquetas=("opcional",),
         )
         self.entrada_ing_dos = crear_selector_archivo(
             contenido,
-            "Excel de hace dos años (opcional)",
+            "Excel de hace dos años",
             lambda: self._seleccionar_archivo_ingresos("dos"),
-            ayuda="Se usa en la segunda hoja para comparar el año completo anterior vs hace dos años.",
+            ayuda="Otro CommiFlow o un Excel con hoja Datos de hace dos años completo.",
+            etiquetas=("opcional",),
         )
 
-        boton_frame = tk.Frame(contenido, bg=COLORES["fondo"])
-        boton_frame.pack(pady=(24, 36))
-        self.boton_ingresos = tk.Button(
-            boton_frame,
-            text="Generar Ingresos vs Ventas",
-            command=self.ejecutar_ingresos,
-            bg=COLORES["primario"],
-            fg="#FFFFFF",
-            activebackground=COLORES["primario_hover"],
-            activeforeground="#FFFFFF",
-            font=("Segoe UI Semibold", 12),
-            relief="flat",
-            bd=0,
-            cursor="hand2",
-            padx=32,
-            pady=11,
-        )
-        self.boton_ingresos.pack()
-        self.boton_ingresos.bind(
-            "<Enter>",
-            lambda _e: self.boton_ingresos.config(bg=COLORES["primario_hover"])
-            if str(self.boton_ingresos["state"]) == "normal"
-            else None,
-        )
-        self.boton_ingresos.bind(
-            "<Leave>",
-            lambda _e: self.boton_ingresos.config(bg=COLORES["primario"])
-            if str(self.boton_ingresos["state"]) == "normal"
-            else None,
+        self.boton_ingresos = crear_boton_primario(
+            contenido,
+            "Generar Ingresos vs Ventas",
+            self.ejecutar_ingresos,
         )
 
     def _seleccionar_archivo_ingresos(self, clave):
         archivo = filedialog.askopenfilename(filetypes=TIPOS_EXCEL)
         if not archivo:
             return
+        if clave == "actual":
+            self._ingresos_autollenado = False
         self.archivos_ingresos[clave] = archivo
         entradas = {
             "actual": self.entrada_ing_actual,
@@ -1857,6 +1965,9 @@ class VentanaPrincipal:
         }
         for entrada in entradas[clave]:
             reemplazar_texto(entrada, texto)
+
+        if clave == "catalogos":
+            self._precargar_archivo_fase2("catalogos", archivos[0])
 
         if clave == "saa" and es_entrada_txt(archivos):
             self._actualizar_hojas(
@@ -2238,24 +2349,60 @@ class VentanaPrincipal:
             self.actualizar_estado(
                 "Proceso completado correctamente", 100, "ok"
             )
-            self.root.after(
-                0,
-                lambda: messagebox.showinfo(
-                    "CommiFlow",
-                    "Proceso completado correctamente.",
-                ),
-            )
+            self.root.after(0, self._aviso_fin_proceso_solo)
         except Exception as error:
             self._manejar_error(error)
         finally:
             self._progreso_global = False
             self.root.after(0, lambda: self._set_ejecutando(False))
 
+    def _precargar_archivo_fase2(self, clave, archivo):
+        actual = self.archivos_fase2.get(clave)
+        if actual and clave not in self._autollenados_fase2:
+            return
+        try:
+            self._asignar_archivo_fase2(clave, archivo)
+        except Exception:
+            return
+        self._autollenados_fase2.add(clave)
+
+    def _precargar_reportes_fase2(self):
+        cargados = 0
+        for clave, ramo in (("vida", "VIDA"), ("gmm", "GMM")):
+            try:
+                ruta, _hojas = self._ruta_reporte_generado(ramo)
+            except ValueError:
+                continue
+            self._precargar_archivo_fase2(clave, ruta)
+            if self.archivos_fase2.get(clave) == ruta:
+                cargados += 1
+        return cargados
+
+    def _aviso_fin_proceso_solo(self):
+        mensaje = "Proceso completado correctamente."
+        if self._precargar_reportes_fase2():
+            mensaje += (
+                "\n\nLos reportes VIDA Final y GMM Final ya quedaron cargados en "
+                "la pestaña 2 · Comisiones y Bonos."
+            )
+        messagebox.showinfo("CommiFlow", mensaje)
+
+    def _precargar_ingresos_actual(self, ruta):
+        if self.archivos_ingresos.get("actual") and not self._ingresos_autollenado:
+            return
+        self.archivos_ingresos["actual"] = ruta
+        reemplazar_texto(self.entrada_ing_actual, ruta)
+        self._ingresos_autollenado = True
+
     def _seleccionar_archivo_fase2(self, clave):
         tipos = TIPOS_REPORTE if clave in ("vida", "gmm") else TIPOS_EXCEL
         archivo = filedialog.askopenfilename(filetypes=tipos)
         if not archivo:
             return
+        self._autollenados_fase2.discard(clave)
+        self._asignar_archivo_fase2(clave, archivo)
+
+    def _asignar_archivo_fase2(self, clave, archivo):
         self.archivos_fase2[clave] = archivo
         entradas = {
             "vida": self.entrada_f2_vida,
@@ -2264,7 +2411,9 @@ class VentanaPrincipal:
             "catalogos": self.entrada_f2_catalogos,
             "bonos": self.entrada_f2_bonos,
             "bonos_anterior": self.entrada_f2_bonos_anterior,
+            "bonos_dos_anios": self.entrada_f2_bonos_dos_anios,
             "comision_anterior": self.entrada_f2_comision_anterior,
+            "comision_dos_anios": self.entrada_f2_comision_dos_anios,
             "clasif": self.entrada_f2_clasif,
         }
         reemplazar_texto(entradas[clave], archivo)
@@ -2279,9 +2428,17 @@ class VentanaPrincipal:
                 "frame_f2_bonos_anterior_hojas",
                 "checks_f2_bonos_anterior",
             ),
+            "bonos_dos_anios": (
+                "frame_f2_bonos_dos_anios_hojas",
+                "checks_f2_bonos_dos_anios",
+            ),
             "comision_anterior": (
                 "frame_f2_comision_anterior_hojas",
                 "checks_f2_comision_anterior",
+            ),
+            "comision_dos_anios": (
+                "frame_f2_comision_dos_anios_hojas",
+                "checks_f2_comision_dos_anios",
             ),
             "clasif": ("frame_f2_clasif_hojas", "checks_f2_clasif"),
         }
@@ -2306,9 +2463,17 @@ class VentanaPrincipal:
                 "frame_f2_bonos_anterior_hojas",
                 "checks_f2_bonos_anterior",
             ),
+            "bonos_dos_anios": (
+                "frame_f2_bonos_dos_anios_hojas",
+                "checks_f2_bonos_dos_anios",
+            ),
             "comision_anterior": (
                 "frame_f2_comision_anterior_hojas",
                 "checks_f2_comision_anterior",
+            ),
+            "comision_dos_anios": (
+                "frame_f2_comision_dos_anios_hojas",
+                "checks_f2_comision_dos_anios",
             ),
             "clasif": ("frame_f2_clasif_hojas", "checks_f2_clasif"),
         }
@@ -2320,7 +2485,7 @@ class VentanaPrincipal:
             return
         checks = llenar_checks(frame, hojas)
         setattr(self, checks_attr, checks)
-        if clave == "comision_anterior":
+        if clave in ("comision_anterior", "comision_dos_anios"):
             hay = False
             for hoja, variable in checks:
                 nombre = str(hoja).strip().upper()
@@ -2337,10 +2502,21 @@ class VentanaPrincipal:
             "dist": ("Distribución Comercial", self.checks_f2_dist),
             "catalogos": ("Catálogos", self.checks_f2_catalogos),
             "bonos": ("Bonos", self.checks_f2_bonos),
-            "bonos_anterior": ("Bonos del año anterior", self.checks_f2_bonos_anterior),
+            "bonos_anterior": (
+                "Bonos FY del año anterior",
+                self.checks_f2_bonos_anterior,
+            ),
+            "bonos_dos_anios": (
+                "Bonos FY de hace dos años",
+                self.checks_f2_bonos_dos_anios,
+            ),
             "comision_anterior": (
                 "Base de comisiones FY del año anterior",
                 self.checks_f2_comision_anterior,
+            ),
+            "comision_dos_anios": (
+                "Base de comisiones FY de hace dos años",
+                self.checks_f2_comision_dos_anios,
             ),
             "clasif": ("Catálogo de clasificaciones", self.checks_f2_clasif),
         }
@@ -2359,18 +2535,45 @@ class VentanaPrincipal:
             raise ValueError(f"Debe seleccionar al menos una hoja de {nombre}.")
         return hojas
 
+    def _hojas_fase2_si_hay(self, clave):
+        if not self.archivos_fase2.get(clave):
+            return None
+        return self._hojas_fase2(clave)
+
+    def _kwargs_anios_previos_fase2(self, hojas=None):
+        def hojas_de(clave):
+            if hojas is not None:
+                return hojas.get(clave)
+            return self._hojas_fase2_si_hay(clave)
+
+        return {
+            "ruta_bonos_anterior": self.archivos_fase2.get("bonos_anterior"),
+            "hojas_bonos_anterior": hojas_de("bonos_anterior"),
+            "ruta_comision_anterior": self.archivos_fase2.get("comision_anterior"),
+            "hojas_comision_anterior": hojas_de("comision_anterior"),
+            "ruta_bonos_dos_anios": self.archivos_fase2.get("bonos_dos_anios"),
+            "hojas_bonos_dos_anios": hojas_de("bonos_dos_anios"),
+            "ruta_comision_dos_anios": self.archivos_fase2.get("comision_dos_anios"),
+            "hojas_comision_dos_anios": hojas_de("comision_dos_anios"),
+        }
+
     def ejecutar_fase2(self):
         faltantes = []
         if not self.archivos_fase2.get("bonos_anterior"):
-            faltantes.append("Bonos del año anterior")
+            faltantes.append("Bonos FY del año anterior")
         if not self.archivos_fase2.get("comision_anterior"):
             faltantes.append("Base de comisiones FY del año anterior")
+        if not self.archivos_fase2.get("bonos_dos_anios"):
+            faltantes.append("Bonos FY de hace dos años")
+        if not self.archivos_fase2.get("comision_dos_anios"):
+            faltantes.append("Base de comisiones FY de hace dos años")
         if faltantes:
             continuar = messagebox.askyesno(
-                "Año anterior",
+                "Años anteriores FY",
                 "Falta:\n"
                 + "\n".join(f"• {item}" for item in faltantes)
-                + "\n\n¿Desea continuar solo con el año actual?",
+                + "\n\nSin el año completo (enero-diciembre) las columnas FY "
+                "quedarán cortadas. ¿Desea continuar?",
             )
             if not continuar:
                 return
@@ -2397,18 +2600,7 @@ class VentanaPrincipal:
                 self._hojas_fase2("clasif"),
                 combinaciones=self._combinaciones_fase2(),
                 actualizar_estado=self.actualizar_estado,
-                ruta_bonos_anterior=self.archivos_fase2.get("bonos_anterior"),
-                hojas_bonos_anterior=(
-                    self._hojas_fase2("bonos_anterior")
-                    if self.archivos_fase2.get("bonos_anterior")
-                    else None
-                ),
-                ruta_comision_anterior=self.archivos_fase2.get("comision_anterior"),
-                hojas_comision_anterior=(
-                    self._hojas_fase2("comision_anterior")
-                    if self.archivos_fase2.get("comision_anterior")
-                    else None
-                ),
+                **self._kwargs_anios_previos_fase2(),
             )
             self.actualizar_estado("Fase 2 completada correctamente", 100, "ok")
             avisos_copia = list(avisos or [])
@@ -2436,7 +2628,8 @@ class VentanaPrincipal:
             f"Se generó {nombre_final} con las hojas de "
             "Comisiones y Bonos, Bases PP y Base ANP.\n"
             "Guarde este archivo; el próximo año es el Excel del año anterior.\n"
-            "Los reportes VIDA Final y GMM Final no se conservaron.",
+            "Los reportes VIDA Final y GMM Final no se conservaron.\n\n"
+            "El archivo ya quedó cargado en la pestaña 6 · Ingresos vs Ventas.",
         )
         self._mostrar_aviso_catalogo(avisos)
 
@@ -2471,6 +2664,16 @@ class VentanaPrincipal:
                 "No hay archivos seleccionados para generar Primas.xlsx.",
             )
             return
+        if not self.carpetas_pp.get("dos"):
+            continuar = messagebox.askyesno(
+                "Hace dos años FY",
+                "No seleccionó la carpeta de primas FY de hace dos años "
+                "(diciembre 2024).\n\n"
+                "Las columnas 2024 de Prima Pagada quedarán vacías. "
+                "¿Desea continuar?",
+            )
+            if not continuar:
+                return
         self._ejecutar_en_hilo(lambda: self._worker_bases_pp(entradas))
 
     def _worker_bases_pp(self, entradas):
@@ -2505,9 +2708,18 @@ class VentanaPrincipal:
             return
         if not self.archivos_anp_anterior:
             continuar = messagebox.askyesno(
-                "Año anterior",
-                "No seleccionó Detalle pagado del año anterior.\n\n"
-                "¿Desea continuar solo con el año actual?",
+                "Año anterior FY",
+                "No seleccionó Detalle pagado FY del año anterior "
+                "(enero-diciembre).\n\n"
+                "¿Desea continuar?",
+            )
+            if not continuar:
+                return
+        if not self.archivos_anp_dos:
+            continuar = messagebox.askyesno(
+                "Hace dos años FY",
+                "No seleccionó Detalle pagado FY de hace dos años (2024).\n\n"
+                "¿Desea continuar?",
             )
             if not continuar:
                 return
@@ -2635,14 +2847,13 @@ class VentanaPrincipal:
             clave: self._hojas_fase2(clave)
             for clave in ("dist", "catalogos", "bonos", "clasif")
         }
-        if self.archivos_fase2.get("bonos_anterior"):
-            hojas_fase2["bonos_anterior"] = self._hojas_fase2("bonos_anterior")
-        else:
-            hojas_fase2["bonos_anterior"] = None
-        if self.archivos_fase2.get("comision_anterior"):
-            hojas_fase2["comision_anterior"] = self._hojas_fase2("comision_anterior")
-        else:
-            hojas_fase2["comision_anterior"] = None
+        for clave in (
+            "bonos_anterior",
+            "comision_anterior",
+            "bonos_dos_anios",
+            "comision_dos_anios",
+        ):
+            hojas_fase2[clave] = self._hojas_fase2_si_hay(clave)
 
         entradas_pp, faltantes_pp = self._entradas_bases_pp()
         if faltantes_pp:
@@ -2658,6 +2869,16 @@ class VentanaPrincipal:
             raise ValueError(
                 "No hay archivos seleccionados en la pestaña Bases PP."
             )
+        if not self.carpetas_pp.get("dos"):
+            continuar = messagebox.askyesno(
+                "Hace dos años FY",
+                "No seleccionó la carpeta de primas FY de hace dos años "
+                "(diciembre 2024).\n\n"
+                "Las columnas 2024 de Prima Pagada quedarán vacías. "
+                "¿Desea continuar?",
+            )
+            if not continuar:
+                return None
 
         if not self.archivos_anp:
             raise ValueError(
@@ -2665,19 +2886,36 @@ class VentanaPrincipal:
             )
         if not self.archivos_anp_anterior:
             continuar = messagebox.askyesno(
-                "Año anterior",
-                "No seleccionó Detalle pagado del año anterior en Base ANP.\n\n"
-                "¿Desea continuar solo con el año actual?",
+                "Año anterior FY",
+                "No seleccionó Detalle pagado FY del año anterior en Base ANP.\n\n"
+                "¿Desea continuar?",
             )
             if not continuar:
                 return None
-        if not self.archivos_fase2.get("bonos_anterior") or not self.archivos_fase2.get(
-            "comision_anterior"
-        ):
+        if not self.archivos_anp_dos:
             continuar = messagebox.askyesno(
-                "Año anterior",
-                "Faltan Bonos y/o Base de comisiones FY del año anterior.\n\n"
-                "¿Desea continuar solo con el año actual?",
+                "Hace dos años FY",
+                "No seleccionó Detalle pagado FY de hace dos años (2024) en Base ANP.\n\n"
+                "¿Desea continuar?",
+            )
+            if not continuar:
+                return None
+        faltantes_fy = []
+        if not self.archivos_fase2.get("bonos_anterior"):
+            faltantes_fy.append("Bonos FY del año anterior")
+        if not self.archivos_fase2.get("comision_anterior"):
+            faltantes_fy.append("Base de comisiones FY del año anterior")
+        if not self.archivos_fase2.get("bonos_dos_anios"):
+            faltantes_fy.append("Bonos FY de hace dos años")
+        if not self.archivos_fase2.get("comision_dos_anios"):
+            faltantes_fy.append("Base de comisiones FY de hace dos años")
+        if faltantes_fy:
+            continuar = messagebox.askyesno(
+                "Años anteriores FY",
+                "Falta:\n"
+                + "\n".join(f"• {item}" for item in faltantes_fy)
+                + "\n\nSin el año completo las columnas FY quedarán cortadas. "
+                "¿Desea continuar?",
             )
             if not continuar:
                 return None
@@ -2781,12 +3019,7 @@ class VentanaPrincipal:
                 combinaciones=contexto["combinaciones"],
                 actualizar_estado=self._reportar_etapa(50, 68),
                 ruta_salida=str(ruta_comision),
-                ruta_bonos_anterior=self.archivos_fase2.get("bonos_anterior"),
-                hojas_bonos_anterior=contexto["hojas_fase2"].get("bonos_anterior"),
-                ruta_comision_anterior=self.archivos_fase2.get("comision_anterior"),
-                hojas_comision_anterior=contexto["hojas_fase2"].get(
-                    "comision_anterior"
-                ),
+                **self._kwargs_anios_previos_fase2(contexto["hojas_fase2"]),
             )
             self._limpiar_reportes_intermedios()
             usados_internos = False
@@ -2819,6 +3052,10 @@ class VentanaPrincipal:
             )
             avisos_copia = list(avisos_catalogo or [])
             nombre_final = ruta_final.name
+            ruta_final_texto = str(ruta_final)
+            self.root.after(
+                0, lambda: self._precargar_ingresos_actual(ruta_final_texto)
+            )
             self.root.after(
                 0,
                 lambda: self._aviso_fin_proceso_completo(nombre_final, avisos_copia),
