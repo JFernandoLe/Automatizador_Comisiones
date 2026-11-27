@@ -173,6 +173,7 @@ HOJA2_BLOQUES = (
 )
 
 PROMOTOR_CELDA = f"'{HOJA_TABLERO}'!$C$3"
+FUENTE_GMM_PRIMER = "GMM Primer Año"
 FUENTE_GMM_RENOV = "GMM Renovacion"
 FORMATO_MONTO = "#,##0.0"
 FORMATO_CRECIMIENTO = "0.0%"
@@ -231,7 +232,11 @@ def _formula_suma(anio_expr, mes_expr, concepto, ramo, ini_ren, fuente=None):
 
 
 def _fuente_prima_promotor(concepto, ramo, ini):
-    if concepto == CONCEPTO_PRIMA and ramo == "GMM" and ini == INI_RENOV:
+    if concepto != CONCEPTO_PRIMA or ramo != "GMM":
+        return None
+    if ini == INI_PRIMER:
+        return FUENTE_GMM_PRIMER
+    if ini == INI_RENOV:
         return FUENTE_GMM_RENOV
     return None
 
