@@ -101,10 +101,10 @@ def leer_comision_base_externa(ruta, hojas=None):
         disponibles = obtener_hojas(ruta)
     except Exception as error:
         raise ValueError(
-            f"No se pudo leer la Base de comisiones del año anterior: {error}"
+            f"No se pudo leer la Base de comisiones FY del año anterior: {error}"
         ) from error
     if not disponibles:
-        raise ValueError("La Base de comisiones del año anterior no tiene hojas.")
+        raise ValueError("La Base de comisiones FY del año anterior no tiene hojas.")
     if hojas:
         candidatas = [hoja for hoja in hojas if hoja in disponibles]
     else:
@@ -127,7 +127,7 @@ def leer_comision_base_externa(ruta, hojas=None):
         bloques.append(tabla)
     if not bloques:
         raise ValueError(
-            "La Base de comisiones del año anterior no tiene la hoja "
+            "La Base de comisiones FY del año anterior no tiene la hoja "
             "Comision Base (Conducto, Mes, TIPO COMISIÓN, Tipo, PROMOTOR, "
             "CLAVE, COMISION, PROMOTORIA)."
         )
@@ -191,7 +191,7 @@ def generar_comision_fase2(
     tabla_base = construir_comision_base(df_vida, df_gmm, dist_map, pfpm_map)
     tabla_base_anterior = None
     if ruta_comision_anterior:
-        _avisar(actualizar_estado, "Leyendo Comision Base del año anterior...", 81)
+        _avisar(actualizar_estado, "Leyendo Comision Base FY del año anterior...", 81)
         tabla_base_anterior = leer_comision_base_externa(
             ruta_comision_anterior, hojas_comision_anterior
         )

@@ -615,13 +615,14 @@ class VentanaPrincipal:
 
         self.entrada_f2_comision_anterior = crear_selector_archivo(
             contenido,
-            "Base de comisiones del año anterior",
+            "Base de comisiones FY del año anterior",
             lambda: self._seleccionar_archivo_fase2("comision_anterior"),
-            ayuda="Excel con la misma estructura que Comision Base de CommiFlow "
+            ayuda="Debe ser el año completo (enero-diciembre), no el acumulado "
+            "al mes de corte. Misma estructura que Comision Base de CommiFlow "
             "(Conducto, Mes, TIPO COMISIÓN, Tipo, PROMOTOR, CLAVE, COMISION, PROMOTORIA).",
         )
         self.frame_f2_comision_anterior_hojas = self._marco_hojas(
-            contenido, "Hojas de Comision Base del año anterior"
+            contenido, "Hojas de Comision Base FY del año anterior"
         )
 
         self.entrada_f2_clasif = crear_selector_archivo(
@@ -1375,7 +1376,7 @@ class VentanaPrincipal:
             (
                 "2",
                 "Comisiones y Bonos",
-                "Usa el reporte interno, Bonos de ambos años y Comision Base del año anterior.",
+                "Usa el reporte interno, Bonos de ambos años y Comision Base FY del año anterior.",
             ),
             (
                 "3",
@@ -2338,7 +2339,7 @@ class VentanaPrincipal:
             "bonos": ("Bonos", self.checks_f2_bonos),
             "bonos_anterior": ("Bonos del año anterior", self.checks_f2_bonos_anterior),
             "comision_anterior": (
-                "Base de comisiones del año anterior",
+                "Base de comisiones FY del año anterior",
                 self.checks_f2_comision_anterior,
             ),
             "clasif": ("Catálogo de clasificaciones", self.checks_f2_clasif),
@@ -2363,7 +2364,7 @@ class VentanaPrincipal:
         if not self.archivos_fase2.get("bonos_anterior"):
             faltantes.append("Bonos del año anterior")
         if not self.archivos_fase2.get("comision_anterior"):
-            faltantes.append("Base de comisiones del año anterior")
+            faltantes.append("Base de comisiones FY del año anterior")
         if faltantes:
             continuar = messagebox.askyesno(
                 "Año anterior",
@@ -2675,7 +2676,7 @@ class VentanaPrincipal:
         ):
             continuar = messagebox.askyesno(
                 "Año anterior",
-                "Faltan Bonos y/o Base de comisiones del año anterior.\n\n"
+                "Faltan Bonos y/o Base de comisiones FY del año anterior.\n\n"
                 "¿Desea continuar solo con el año actual?",
             )
             if not continuar:

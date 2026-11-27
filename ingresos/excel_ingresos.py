@@ -2,7 +2,7 @@ import shutil
 
 from openpyxl import load_workbook
 from openpyxl.formatting.rule import FormatObject, IconSet, Rule
-from openpyxl.styles import Border, Side
+from openpyxl.styles import Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -175,8 +175,8 @@ HOJA2_BLOQUES = (
 PROMOTOR_CELDA = f"'{HOJA_TABLERO}'!$C$3"
 FUENTE_GMM_PRIMER = "GMM Primer Año"
 FUENTE_GMM_RENOV = "GMM Renovacion"
-FORMATO_MONTO = "#,##0.0"
-FORMATO_CRECIMIENTO = "0.0%"
+FORMATO_MONTO = '"$"#,##0.0'
+FORMATO_PORCENTAJE = "0%"
 FILAS_DATOS_H1 = range(9, 52)
 COLUMNAS_MONTO_H1 = (
     "D",
@@ -207,6 +207,59 @@ COLUMNAS_MONTO_H1 = (
     "AI",
 )
 COLUMNAS_CRECIMIENTO_H1 = ("L", "V", "AF", "AJ")
+FILAS_DATOS_H2 = (9, 10, 11, 12, 14, 17, 18, 19, 21, 24, 25, 26, 28)
+RANGOS_ICONOS_H2 = ((9, 14), (17, 21), (24, 28))
+COLUMNAS_MONTO_H2 = (
+    "E",
+    "F",
+    "M",
+    "N",
+    "V",
+    "W",
+    "AD",
+    "AE",
+    "AM",
+    "AN",
+    "AU",
+    "AV",
+)
+COLUMNAS_CRECIMIENTO_H2 = ("H", "P", "Y", "AG", "AP", "AX")
+COLUMNAS_RATIO_H2 = (
+    "J",
+    "K",
+    "R",
+    "S",
+    "AA",
+    "AB",
+    "AI",
+    "AJ",
+    "AR",
+    "AS",
+    "AZ",
+    "BA",
+)
+CELDAS_VACIAS_H2 = (
+    "V11",
+    "W11",
+    "Y11",
+    "AA11",
+    "AB11",
+    "AD11",
+    "AE11",
+    "AG11",
+    "AI11",
+    "AJ11",
+    "AM11",
+    "AN11",
+    "AP11",
+    "AR11",
+    "AS11",
+    "AU11",
+    "AV11",
+    "AX11",
+    "AZ11",
+    "BA11",
+)
 
 
 def _formula_suma(anio_expr, mes_expr, concepto, ramo, ini_ren, fuente=None):
@@ -394,17 +447,33 @@ def _regla_kpi_crecimiento():
     return Rule(type="iconSet", iconSet=iconos)
 
 
+def _centrar_hoja(ws):
+    for fila in ws.iter_rows(
+        min_row=1,
+        max_row=ws.max_row,
+        max_col=ws.max_column,
+    ):
+        for celda in fila:
+            wrap = bool(celda.alignment.wrap_text) if celda.alignment else False
+            celda.alignment = Alignment(
+                horizontal="center",
+                vertical="center",
+                wrap_text=wrap,
+            )
+
+
 def _formatear_tablero(ws):
     for fila in FILAS_DATOS_H1:
         for col in COLUMNAS_MONTO_H1:
             ws[f"{col}{fila}"].number_format = FORMATO_MONTO
         for col in COLUMNAS_CRECIMIENTO_H1:
-            ws[f"{col}{fila}"].number_format = FORMATO_CRECIMIENTO
+            ws[f"{col}{fila}"].number_format = FORMATO_PORCENTAJE
     for col in COLUMNAS_CRECIMIENTO_H1:
         ws.conditional_formatting.add(
             f"{col}{FILAS_DATOS_H1.start}:{col}{FILAS_DATOS_H1.stop - 1}",
             _regla_kpi_crecimiento(),
         )
+    _centrar_hoja(ws)
 
 
 def _aplicar_promotor(ws):
@@ -498,7 +567,7 @@ def _aplicar_promotor(ws):
                     bloque["ratio_ytd_ant1"],
                     bloque["ratio_ytd_act"],
                 ):
-                    ws[f"{col}{fila}"].number_format = "0.0%"
+                    ws[f"{col}{fila}"].number_format = FORMATO_PORCENTAJE
         for fila, hijos in bloque["padres"].items():
             ramo_padre = bloque["filas"][hijos[0]][1]
             for col, anio_off, mes_expr in (
@@ -539,9 +608,10 @@ def _aplicar_promotor(ws):
                 bloque["ratio_ytd_ant1"],
                 bloque["ratio_ytd_act"],
             ):
-                ws[f"{col}{fila}"].number_format = "0.0%"
+                ws[f"{col}{fila}"].number_format = FORMATO_PORCENTAJE
     _llenar_totales_promotor(ws)
     _ajustar_presentacion_promotor(ws)
+    _formatear_promotor(ws)
 
 
 def _llenar_totales_promotor(ws):
@@ -582,33 +652,38 @@ def _ajustar_presentacion_promotor(ws):
     for fila in (14, 21):
         for col in ("M", "N", "AD", "AE", "AU", "AV"):
             ws[f"{col}{fila}"].border = borde
-    vacias = (
-        "V11",
-        "W11",
-        "Y11",
-        "AA11",
-        "AB11",
-        "AD11",
-        "AE11",
-        "AG11",
-        "AI11",
-        "AJ11",
-        "AM11",
-        "AN11",
-        "AP11",
-        "AR11",
-        "AS11",
-        "AU11",
-        "AV11",
-        "AX11",
-        "AZ11",
-        "BA11",
-    )
     sin_borde = Border()
-    for coord in vacias:
+    for coord in CELDAS_VACIAS_H2:
         ws[coord].value = None
         ws[coord].border = sin_borde
         ws[coord].number_format = "General"
+
+
+def _formatear_promotor(ws):
+    vacias = set(CELDAS_VACIAS_H2)
+    for fila in FILAS_DATOS_H2:
+        for col in COLUMNAS_MONTO_H2:
+            coord = f"{col}{fila}"
+            if coord in vacias:
+                continue
+            ws[coord].number_format = FORMATO_MONTO
+        for col in COLUMNAS_CRECIMIENTO_H2:
+            coord = f"{col}{fila}"
+            if coord in vacias:
+                continue
+            ws[coord].number_format = FORMATO_PORCENTAJE
+        for col in COLUMNAS_RATIO_H2:
+            coord = f"{col}{fila}"
+            if coord in vacias:
+                continue
+            ws[coord].number_format = FORMATO_PORCENTAJE
+    for col in COLUMNAS_CRECIMIENTO_H2:
+        for inicio, fin in RANGOS_ICONOS_H2:
+            ws.conditional_formatting.add(
+                f"{col}{inicio}:{col}{fin}",
+                _regla_kpi_crecimiento(),
+            )
+    _centrar_hoja(ws)
 
 
 def llenar_plantilla(ruta_plantilla, ruta_salida, df_datos, anio, mes_corte):
